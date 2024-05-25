@@ -28,7 +28,7 @@ def compute_em(ground_truth_list, pred_list):
         return 0.0
 
 
-def precision_score(ground_truth, prediction):
+def compute_precision(ground_truth, prediction):
     # Convert the lists to sets to facilitate comparison
     ground_truth_set = set(ground_truth)
     prediction_set = set(prediction)
@@ -40,7 +40,7 @@ def precision_score(ground_truth, prediction):
 
 
 # Evaluates completeness
-def recall_score(ground_truth, prediction):
+def compute_recall(ground_truth, prediction):
     # Convert the lists to sets to facilitate comparison
     ground_truth_set = set(ground_truth)
     prediction_set = set(prediction)
@@ -57,8 +57,8 @@ def compute_f1_score(ground_truth, prediction):
     prediction_set = set(prediction)
     
     # Calculate precision and recall
-    precision = precision_score(ground_truth_set, prediction_set)
-    recall = recall_score(ground_truth_set, prediction_set)
+    precision = compute_precision(ground_truth_set, prediction_set)
+    recall = compute_recall(ground_truth_set, prediction_set)
     
     # Calculate F1 score
     if precision + recall == 0:
@@ -73,20 +73,19 @@ def extract_time_ranges(entity_list):
     time_ranges = []
     for entity in entity_list:
         # Extract the time ranges using a regular expression
-        match = re.search(r'\((.*?)\)', entity)
+        match = re.search(r'\((\d{4}.*)\)', entity)
         if match:
-            times = match.group(1).split(', ')
-            time_ranges.extend(times)
-    print(time_ranges)
-    return set(time_ranges)
+            time_range = f"({match.group(1)})"
+            time_ranges.append(time_range)
+    return time_ranges
 
-def time_precision_score(ground_truth, prediction):
+def compute_time_precision_score(ground_truth, prediction):
     # Extract time ranges from the ground truth and prediction
     ground_truth_times = extract_time_ranges(ground_truth)
     prediction_times = extract_time_ranges(prediction)
     
     # Calculate true positives (correctly predicted time intervals)
-    true_positives = len(ground_truth_times & prediction_times)
+    true_positives = len(set(ground_truth_times) & set(prediction_times))
     
     # Calculate precision
     if len(prediction_times) == 0:
@@ -97,20 +96,26 @@ def time_precision_score(ground_truth, prediction):
 def extract_entities(entity_list):
     entities = []
     for entity in entity_list:
-        # Extract the part before the parentheses using a regular expression
-        match = re.match(r'(.*?) \(', entity)
+        # Extract the part before the parentheses or part within parentheses that does not contain digits
+        match = re.match(r'(.*?)(?: \((\D+?)\))? \((\d{4}.*)\)', entity)
         if match:
-            entities.append(match.group(1).strip())
-    print(entities)
-    return set(entities)
+            entity_name = match.group(1).strip()
+            entities.append(entity_name)
+        else:
+            # Check if there's a part within parentheses that does not contain digits
+            match = re.match(r'(.*?) \((\D+?)\)$', entity)
+            if match:
+                entity_name = f"{match.group(1).strip()} ({match.group(2).strip()})"
+                entities.append(entity_name)
+    return entities
 
-def entity_precision_score(ground_truth, prediction):
+def compute_entity_precision_score(ground_truth, prediction):
     # Extract entities from the ground truth and prediction
     ground_truth_entities = extract_entities(ground_truth)
     prediction_entities = extract_entities(prediction)
     
     # Calculate true positives (correctly predicted entities)
-    true_positives = len(ground_truth_entities & prediction_entities)
+    true_positives = len(set(ground_truth_entities) & set(prediction_entities))
     
     # Calculate precision
     if len(prediction_entities) == 0:
