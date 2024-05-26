@@ -1,5 +1,5 @@
 import re
-from nltk.translate.bleu_score import sentence_bleu, corpus_bleu
+from nltk.translate.bleu_score import sentence_bleu
 
 # NOTE: Each tokenized list typically starts with 784, 31 and ends with 908, 1 because of the [''] structure
 # We assume these have been removed before metrics computation (see helpers in utils.py)
@@ -7,12 +7,12 @@ from nltk.translate.bleu_score import sentence_bleu, corpus_bleu
 
 # Exact match: strict all or nothing matching on each list item (entity-time pair)
 # This is not computed on token-level
-def compute_em(ground_truth_list, pred_list):
+def compute_em(gt_list, pred_list):
     # Calculate the match score for each ground truth item
-    matches = [1 if gt in pred_list else 0 for gt in ground_truth_list]
+    matches = [1 if gt in pred_list else 0 for gt in gt_list]
     
     # Compute the average exact match score based on the length of the ground truth list
-    exact_match_score = sum(matches) / len(ground_truth_list)
+    exact_match_score = sum(matches) / len(gt_list)
     
     return exact_match_score
 
@@ -46,6 +46,36 @@ def compute_recall(gt_tokens, pred_tokens):
     return true_positives / len(gt_tokens)
 
 
+# Computes BLEU: precision-based overlap between predicted time ranges and ground truth time ranges
+# We can do this on token-level, since each year XXXX has a unique token
+def compute_time_bleu(gt_list, pred_list, tokenizer):
+    gt_time_list = extract_time_ranges(gt_list)
+    pred_time_list = extract_time_ranges(pred_list)
+    
+    # Tokenize each timeline item '(XXXX, ...)' - String converted to List!
+    gt_time_list = list(map(lambda x: tokenizer(x, return_tensors="pt").input_ids[0].tolist(), gt_time_list))
+    pred_time_list = list(map(lambda x: tokenizer(x, return_tensors="pt").input_ids[0].tolist(), pred_time_list))
+    
+    # Remove token 1 from all inner lists, since that denotes stop token </s>
+    gt_time_list = [lst[:-1] if lst and lst[-1] == 1 else lst for lst in gt_time_list]
+    pred_time_list = [lst[:-1] if lst and lst[-1] == 1 else lst for lst in pred_time_list]
+
+    # print(f"\nPred time range tokens: {pred_time_list}")
+    # print(f"GT time range tokens: {gt_time_list}\n")
+
+    total_bleu = 0
+    for i, pred in enumerate(pred_time_list):
+        curr_bleu = sentence_bleu(gt_time_list, pred)  # BLEU for curr pred item against all reference items
+        # print(f"Curr BLEU for pred {pred}: {curr_bleu}")
+        total_bleu += curr_bleu
+    total_bleu = total_bleu / len(pred_time_list)
+    return total_bleu
+
+
+def compute_entity_bert(gt_list, pred_list, tokenizer):
+    return 0
+
+
 def extract_time_ranges(entity_list):
     time_ranges = []
     for entity in entity_list:
@@ -55,18 +85,6 @@ def extract_time_ranges(entity_list):
             time_range = f"({match.group(1)})"
             time_ranges.append(time_range)
     return time_ranges
-
-
-# TimePrecision = # correct time ranges / # time ranges given
-# Computed over time ranges (NOT tokenized, as we wanna match on full year)
-def compute_time_precision(ground_truth, prediction):
-    ground_truth_times = extract_time_ranges(ground_truth)
-    prediction_times = extract_time_ranges(prediction)
-    true_positives = len(set(ground_truth_times) & set(prediction_times))
-    if len(prediction_times) == 0:
-        return 0.0
-    return true_positives / len(prediction_times)
-
 
 def extract_entities(entity_list):
     entities = []
@@ -83,26 +101,3 @@ def extract_entities(entity_list):
                 entity_name = f"{match.group(1).strip()} ({match.group(2).strip()})"
                 entities.append(entity_name)
     return entities
-
-# TODO: tokenize extracted entities
-
-# TODO: use NLTK to compute BLEU 
-def compute_entity_bleu(gt_tokens, pred_tokens):
-    # BLEU_entity: over entity items (tokenized and concatenated) -> use sentence_blue or corpus_bleu
-    # It calculates a precision score for each n-gram size (typically 1 to 4) and then computes a geometric mean of these precisions.
-    # entity_bleu_score = corpus_bleu(example_gt, example_pred_list)
-    # print(entity_bleu_score)
-    return 0
-
-# def compute_entity_precision_score(ground_truth, prediction):
-#     # Extract entities from the ground truth and prediction
-#     ground_truth_entities = extract_entities(ground_truth)
-#     prediction_entities = extract_entities(prediction)
-    
-#     # Calculate true positives (correctly predicted entities)
-#     true_positives = len(set(ground_truth_entities) & set(prediction_entities))
-    
-#     # Calculate precision
-#     if len(prediction_entities) == 0:
-#         return 0.0
-#     return true_positives / len(prediction_entities)

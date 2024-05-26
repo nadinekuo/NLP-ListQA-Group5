@@ -26,11 +26,8 @@
     },
     "ground_truth_tokens": {
       "feature": {
-        "feature": {
-          "dtype": "int64",
-          "_type": "Value"
-        },
-        "_type": "Sequence"
+        "dtype": "int64",
+        "_type": "Value"
       },
       "_type": "Sequence"
     }
