@@ -1,5 +1,7 @@
 import re
 from nltk.translate.bleu_score import sentence_bleu
+from transformers import BertTokenizer, BertForMaskedLM, BertModel
+from bert_score import BERTScorer
 
 # NOTE: Each tokenized list typically starts with 784, 31 and ends with 908, 1 because of the [''] structure
 # We assume these have been removed before metrics computation (see helpers in utils.py)
@@ -72,8 +74,18 @@ def compute_time_bleu(gt_list, pred_list, tokenizer):
     return total_bleu
 
 
-def compute_entity_bert(gt_list, pred_list, tokenizer):
-    return 0
+def compute_entity_bert(gt_list, pred_list):
+    gt_entity_list = extract_entities(gt_list)
+    pred_entity_list = extract_entities(pred_list)
+
+    # Concatenate all strings in pred and gt lists
+    concat_gt = ' '.join(gt_entity_list)
+    concat_pred = ' '.join(pred_entity_list)
+
+    scorer = BERTScorer(model_type='bert-base-uncased')  # NOTE: this can take some time to load
+    P, R, F1 = scorer.score([concat_gt], [concat_pred])
+    # print(f"BERTScore Precision: {P.mean():.4f}, Recall: {R.mean():.4f}, F1: {F1.mean():.4f}")
+    return F1.tolist()[0]    # Convert Tensor to List
 
 
 def extract_time_ranges(entity_list):
