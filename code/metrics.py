@@ -73,7 +73,8 @@ def compute_time_bleu(gt_list, pred_list, tokenizer):
     total_bleu = total_bleu / len(pred_time_list)
     return total_bleu
 
-
+# Uses BERT tokenizer under the hood to compute similarity between prediction and GT
+# As this takes into semantics (unlike BLEU e.g.) this can detect synonyms
 def compute_entity_bert(gt_list, pred_list):
     gt_entity_list = extract_entities(gt_list)
     pred_entity_list = extract_entities(pred_list)
