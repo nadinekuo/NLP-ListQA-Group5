@@ -1,6 +1,7 @@
 import re
 from nltk.translate.bleu_score import sentence_bleu, corpus_bleu
 
+# NOTE: Each tokenized list typically starts with 784, 31 and ends with 908, 1 because of the [''] structure
 
 # Exact match: strict matching on each list item (entity-time pair)
 def compute_em(ground_truth_list, pred_list):
