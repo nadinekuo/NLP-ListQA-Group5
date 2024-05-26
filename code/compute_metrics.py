@@ -1,33 +1,19 @@
 import re
-
-def extract_between_tags(text):
-    start_tag = '<pad>'
-    end_tag = '</s>'
-
-    # Find the positions of the start and end tags
-    start_pos = text.find(start_tag)
-    end_pos = text.find(end_tag)
-    
-    # Check none of the tags are present, just return text
-    if start_pos == -1 or end_pos == -1:
-        return text
-    
-    # Extract the content between the tags
-    extracted_content = text[start_pos + len(start_tag):end_pos].strip()
-    return extracted_content
+from nltk.translate.bleu_score import sentence_bleu, corpus_bleu
 
 
+# Exact match: strict matching on each list item (entity-time pair)
 def compute_em(ground_truth_list, pred_list):
-    # Convert the lists to sets to compare - we don't care about ordering
-    ground_truth_set = set(ground_truth_list)
-    prediction_set = set(pred_list)
-    # Calculate the exact match score
-    if ground_truth_set == prediction_set:
-        return 1.0
-    else:
-        return 0.0
+    # Calculate the match score for each ground truth item
+    matches = [1 if gt in pred_list else 0 for gt in ground_truth_list]
+    
+    # Compute the average exact match score based on the length of the ground truth list
+    exact_match_score = sum(matches) / len(ground_truth_list)
+    
+    return exact_match_score
 
 
+# TODO: reuse for time (and entities)
 def compute_precision(ground_truth, prediction):
     # Convert the lists to sets to facilitate comparison
     ground_truth_set = set(ground_truth)
