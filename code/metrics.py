@@ -49,10 +49,14 @@ def compute_recall(gt_tokens, pred_tokens):
 
 
 # Computes BLEU: precision-based overlap between predicted time ranges and ground truth time ranges
+# The NLTK implementation computes BLEU-1, BLEU-2, BLEU-3, BLEU-4 and averages
 # We can do this on token-level, since each year XXXX has a unique token
 def compute_time_bleu(gt_list, pred_list, tokenizer):
     gt_time_list = extract_time_ranges(gt_list)
     pred_time_list = extract_time_ranges(pred_list)
+
+    if len(pred_time_list) == 0:
+        return 0
     
     # Tokenize each timeline item '(XXXX, ...)' - String converted to List!
     gt_time_list = list(map(lambda x: tokenizer(x, return_tensors="pt").input_ids[0].tolist(), gt_time_list))
@@ -78,6 +82,9 @@ def compute_time_bleu(gt_list, pred_list, tokenizer):
 def compute_entity_bert(gt_list, pred_list):
     gt_entity_list = extract_entities(gt_list)
     pred_entity_list = extract_entities(pred_list)
+
+    if len(pred_entity_list) == 0:
+        return 0
 
     # Concatenate all strings in pred and gt lists
     concat_gt = ' '.join(gt_entity_list)
@@ -108,9 +115,5 @@ def extract_entities(entity_list):
             entity_name = match.group(1).strip()
             entities.append(entity_name)
         else:
-            # Check if there's a part within parentheses that does not contain digits
-            match = re.match(r'(.*?) \((\D+?)\)$', entity)
-            if match:
-                entity_name = f"{match.group(1).strip()} ({match.group(2).strip()})"
-                entities.append(entity_name)
+            entities.append(entity)
     return entities
