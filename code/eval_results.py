@@ -8,9 +8,9 @@ import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Eval performance')
-    parser.add_argument('--data-dir', default='3_shot_flan-t5-large.hf')
+    parser.add_argument('--data-dir', default='../results/3_shot_flan-t5-large.hf')
     parser.add_argument('--tokenizer-name', default='google/flan-t5-large')
-    parser.add_argument('--output-dir', default='3_shot_flan-t5-large.txt')
+    parser.add_argument('--output-dir', default='../results/3_shot_flan-t5-large.txt')
     args = parser.parse_args()
     return args
 
@@ -65,7 +65,7 @@ if __name__ == '__main__':
     args = parse_args()
     print(args)
     print(f"\n\nLoading dataset...")
-    data = Dataset.load_from_disk(f"../results/{args.data_dir}")
+    data = Dataset.load_from_disk(f"{args.data_dir}")
     print(data)
     print(f"\nDataset length: {len(data)}\n\n")
 
@@ -74,5 +74,5 @@ if __name__ == '__main__':
 
     res_dict = eval_performance(data, tok)
 
-    with open(f"../results/{args.output_dir}", "w") as f:
+    with open(f"{args.output_dir}", "w") as f:
         f.write(str(res_dict))
