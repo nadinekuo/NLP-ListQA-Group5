@@ -36,7 +36,7 @@ def eval_performance(results_ds, tokenizer):
 
         # ---------------------- Syntax-based metrics --------------------------
         em = metrics.compute_em(gt, pred)
-        f1 = metrics.compute_f1(gt, pred_tokens)
+        f1 = metrics.compute_f1(gt_tokens, pred_tokens)
         recall = metrics.compute_recall(gt_tokens, pred_tokens)
         time_bleu = metrics.compute_time_bleu(gt, pred, tokenizer)  # NOTE: tends to be relatively high, since the time range is already hinted at in the prompt
         # ---------------------- Semantics-based metrics --------------------------
