@@ -4,7 +4,15 @@ import re
 from datasets import Dataset
 from transformers import T5Tokenizer
 import torch
+import argparse
 
+def parse_args():
+    parser = argparse.ArgumentParser(description='Eval performance')
+    parser.add_argument('--data-dir', default='3_shot_flan-t5-large.hf')
+    parser.add_argument('--tokenizer-name', default='google/flan-t5-large')
+    parser.add_argument('--output-dir', default='3_shot_flan-t5-large.txt')
+    args = parser.parse_args()
+    return args
 
 def eval_performance(results_ds, tokenizer):
 
@@ -54,15 +62,17 @@ def eval_performance(results_ds, tokenizer):
 
 if __name__ == '__main__':
 
+    args = parse_args()
+    print(args)
     print(f"\n\nLoading dataset...")
-    data = Dataset.load_from_disk("../results/10_shot_flan-t5-large_test.hf")
+    data = Dataset.load_from_disk(f"../results/{args.data_dir}")
     print(data)
     print(f"\nDataset length: {len(data)}\n\n")
 
-    tok = T5Tokenizer.from_pretrained("google/flan-t5-large", torch_dtype=torch.float16)
+    tok = T5Tokenizer.from_pretrained(args.tokenizer_name, torch_dtype=torch.float16)
     # tok = T5Tokenizer.from_pretrained("google/flan-t5-xl", torch_dtype=torch.float16)
 
     res_dict = eval_performance(data, tok)
 
-    with open("../results/flant5-large-3shot.txt", "w") as f:
+    with open(f"../results/{args.output_dir}", "w") as f:
         f.write(str(res_dict))

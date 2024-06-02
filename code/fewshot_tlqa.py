@@ -5,9 +5,17 @@ import torch
 from datasets import Dataset
 from langchain_core.prompts.few_shot import FewShotPromptTemplate
 from langchain_core.prompts.prompt import PromptTemplate
-import accelerate   # TODO: uncomment when using GPU
+import accelerate
+import argparse
 
-# NOTE: This script is based on TLQA_few_shot_ipynb
+# NOTE: This script is based on TLQA_few_shot_ipynb, but adapted to run using GPU
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Few shot eval')
+    parser.add_argument('--k', default=3)
+    parser.add_argument('--model-name', default='google/flan-t5-large')
+    args = parser.parse_args()
+    return args
 
 
 # Extracts all questions from the (train) set used for getting neighbours
@@ -23,10 +31,9 @@ def simplify_dict_list(dict_list):
 
 
 def fewshot_eval(K, model_name, test_data, train_data, train_emb):  
-    # TODO: Experiment with 3, 5, 7, 10
     MAX_OUTPUT_LEN = 200
     
-    model = T5ForConditionalGeneration.from_pretrained(model_name, device_map="auto")
+    model = T5ForConditionalGeneration.from_pretrained(model_name).to("cuda")
     tokenizer = T5Tokenizer.from_pretrained(model_name, torch_dtype=torch.float16)
     
     results_GT_dict = {'prompts': [], 'outputs': [], 'output_tokens': [], 
@@ -56,9 +63,7 @@ def fewshot_eval(K, model_name, test_data, train_data, train_emb):
         few_shot_prompt = prompt.format(input=f"{test_question} Please answer this question in the same format as the {K} examples above.")
         results_GT_dict['prompts'].append(few_shot_prompt)
         
-        # TODO: ---------------------- UNCOMMENT WHEN USING GPU -----------------------------
         input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids.to("cuda")
-        # input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids
         output_tokens = model.generate(input_ids, max_length=MAX_OUTPUT_LEN)
         output = tokenizer.decode(output_tokens[0])
 
@@ -75,7 +80,12 @@ def fewshot_eval(K, model_name, test_data, train_data, train_emb):
 
 if __name__ == '__main__':
 
-    Ks = [3, 5, 7, 10]
+    # TODO: Try K-values [3, 5, 7, 10]
+    # TODO: Models: "google/flan-t5-large" and "google/flan-t5-xl"
+
+    args = parse_args()
+    k = args.k
+    model = args.model_name
     
     knn = KnnSearch()
     test_set = json_to_list("../data/test_TLQA.json")
@@ -83,9 +93,6 @@ if __name__ == '__main__':
     train_questions = get_transfer_questions(train_set)   # Keep questions only to embed (to use in similarity metric)
     train_questions_emb = knn.get_embeddings_for_data(train_questions)
 
-    for k in Ks:
-        print(f"\n\nStarting {k}-shot evaluation on FlanT5-large...\n\n")
-        fewshot_eval(K=k, model_name="google/flan-t5-large", test_data=test_set, train_data=train_set, train_emb=train_questions_emb)
-        print(f"\n\nStarting {k}-shot evaluation on FlanT5-XL...\n\n")
-        fewshot_eval(K=k, model_name="google/flan-t5-xl", test_data=test_set, train_data=train_set, train_emb=train_questions_emb)
+    print(f"\n\nStarting {k}-shot evaluation on FlanT5-large...\n\n")
+    fewshot_eval(K=k, model_name=model, test_data=test_set, train_data=train_set, train_emb=train_questions_emb)
 
