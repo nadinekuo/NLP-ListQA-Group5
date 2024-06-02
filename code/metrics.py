@@ -23,8 +23,6 @@ def compute_em(gt_list, pred_list):
 def compute_f1(gt_tokens, pred_tokens):
     precision = compute_precision(gt_tokens, pred_tokens)
     recall = compute_recall(gt_tokens, pred_tokens)
-    print(f"Precision: {precision}")
-    print(f"Recall: {recall}")
     
     if precision + recall == 0:
         f1_score = 0.0
