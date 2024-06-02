@@ -5,7 +5,7 @@ import torch
 from datasets import Dataset
 from langchain_core.prompts.few_shot import FewShotPromptTemplate
 from langchain_core.prompts.prompt import PromptTemplate
-import accelerate
+# import accelerate
 import argparse
 
 # NOTE: This script is based on TLQA_few_shot_ipynb, but adapted to run using GPU
@@ -33,7 +33,7 @@ def simplify_dict_list(dict_list):
 def fewshot_eval(K, model_name, test_data, train_data, train_emb):  
     MAX_OUTPUT_LEN = 200
     
-    model = T5ForConditionalGeneration.from_pretrained(model_name).to("cuda")
+    model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
     tokenizer = T5Tokenizer.from_pretrained(model_name, torch_dtype=torch.float16)
     
     results_GT_dict = {'prompts': [], 'outputs': [], 'output_tokens': [], 
@@ -50,6 +50,7 @@ def fewshot_eval(K, model_name, test_data, train_data, train_emb):
         # For each test question, retrieve k neighbours (try 3, 5, 7, 10)
         test_question = test_data[i]['question']
         print(f"Test question {i}: {test_question}")
+
         neighs = knn.get_top_n_neighbours(sentence=test_question, data_emb=train_emb, transfer_data=train_data, k=K)
         simple_neighs = simplify_dict_list(neighs)
 
@@ -63,7 +64,7 @@ def fewshot_eval(K, model_name, test_data, train_data, train_emb):
         few_shot_prompt = prompt.format(input=f"{test_question} Please answer this question in the same format as the {K} examples above.")
         results_GT_dict['prompts'].append(few_shot_prompt)
         
-        input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids.to("cuda")
+        input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids.to(device)
         output_tokens = model.generate(input_ids, max_length=MAX_OUTPUT_LEN)
         output = tokenizer.decode(output_tokens[0])
 
@@ -82,11 +83,11 @@ if __name__ == '__main__':
 
     # TODO: Try K-values [3, 5, 7, 10]
     # TODO: Models: "google/flan-t5-large" and "google/flan-t5-xl"
-
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args = parse_args()
     k = args.k
     model = args.model_name
-    
+
     knn = KnnSearch()
     test_set = json_to_list("../data/test_TLQA.json")
     train_set = json_to_list("../data/train_TLQA.json")

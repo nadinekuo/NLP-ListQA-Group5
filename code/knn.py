@@ -33,7 +33,7 @@ class KnnSearch:
         sorted_similarities = sorted(results_sims, key=lambda x: x[1], reverse=True)  # Obtain the highest similarities
 
         # NOTE: we only match based on questions, but include the full question-answer pair in resulting neighs
-        for idx, item in sorted_similarities[:k]:
+        for idx, item in sorted_similarities[:int(k)]:
                     top_questions.append(transfer_data[idx])
 
         return top_questions
