@@ -57,8 +57,8 @@ def fewshot_eval(K, model_name, test_data, train_data, train_emb):
         results_GT_dict['prompts'].append(few_shot_prompt)
         
         # TODO: ---------------------- UNCOMMENT WHEN USING GPU -----------------------------
-        # input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids.to("cuda")
-        input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids
+        input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids.to("cuda")
+        # input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids
         output_tokens = model.generate(input_ids, max_length=MAX_OUTPUT_LEN)
         output = tokenizer.decode(output_tokens[0])
 
@@ -69,7 +69,7 @@ def fewshot_eval(K, model_name, test_data, train_data, train_emb):
         results_GT_dict['ground_truth_tokens'].append(gt_tokens)
 
     results_ds = Dataset.from_dict(results_GT_dict)
-    results_ds.save_to_disk(f"{K}_shot_{model_name}.hf")
+    results_ds.save_to_disk(f"{K}_shot_{model_name}.hf")  # TODO: Dataset name may have to changed for other experiments to prevent overwriting!
 
 
 
