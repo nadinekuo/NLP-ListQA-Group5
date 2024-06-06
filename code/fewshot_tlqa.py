@@ -82,7 +82,7 @@ def fewshot_eval(K, model_name, test_data, train_data, train_emb):
 if __name__ == '__main__':
 
     # TODO: Try K-values [3, 5, 7, 10]
-    # TODO: Models: "google/flan-t5-large" and "google/flan-t5-xl"
+    # TODO: Models: "google/flan-t5-large" and "google/flan-t5-xl" - the latter gives out of mem tho 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args = parse_args()
     k = args.k
