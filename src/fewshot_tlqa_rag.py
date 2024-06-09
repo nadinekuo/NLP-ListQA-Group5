@@ -1,3 +1,4 @@
+import os
 from knn import KnnSearch
 from utils import json_to_list
 from transformers import T5Tokenizer, T5ForConditionalGeneration
@@ -42,7 +43,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         input_variables=["question", "answers"], template="Question: {question}\n{answers}"
     )
 
-    # Convert test set to list and loop over all items (1071 in total)
+    # Convert test set to list and loop over all items
     for i, item in enumerate(test_data):
         
         # For each test question, retrieve k neighbours
@@ -54,7 +55,8 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         simple_neighs = simplify_dict_list(neighs)
 
         # Retrieve top-1 relevant context from infoboxes
-        infobox_embeddings = retriever.encode([infobox['infobox'] for infobox in infoboxes])
+        infobox_texts = [infobox['infobox'] for infobox in infoboxes]
+        infobox_embeddings = retriever.encode(infobox_texts, convert_to_tensor=True)
         query_embedding = retriever.encode(test_question, convert_to_tensor=True)
         hits = util.semantic_search(query_embedding, infobox_embeddings, top_k=1)[0]
         top_infobox = infoboxes[hits[0]['corpus_id']]['infobox']
@@ -83,7 +85,6 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
     results_ds.save_to_disk(f"{K}_shot_{model_name}_with_context.hf")  # Ensure different name to prevent overwriting
 
 
-
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args = parse_args()
@@ -91,13 +92,27 @@ if __name__ == '__main__':
     model = args.model_name
 
     knn = KnnSearch()
-    test_set = json_to_list("../data/test_TLQA.json")
-    train_set = json_to_list("../data/train_TLQA.json")
+
+    # Check if the files exist
+    data_dir = "data"
+    test_file_path = os.path.join(data_dir, "test_TLQA.json")
+    train_file_path = os.path.join(data_dir, "train_TLQA.json")
+    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes.json")
+
+    if not os.path.exists(test_file_path):
+        raise FileNotFoundError(f"{test_file_path} not found.")
+    if not os.path.exists(train_file_path):
+        raise FileNotFoundError(f"{train_file_path} not found.")
+    if not os.path.exists(infoboxes_file_path):
+        raise FileNotFoundError(f"{infoboxes_file_path} not found.")
+    
+    test_set = json_to_list(test_file_path)
+    train_set = json_to_list(train_file_path)
     train_questions = get_transfer_questions(train_set)   # Keep questions only to embed (to use in similarity metric)
     train_questions_emb = knn.get_embeddings_for_data(train_questions)
     
     # Load infoboxes
-    with open('/mnt/data/extracted_infoboxes.json', 'r') as f:
+    with open(infoboxes_file_path, 'r') as f:
         infoboxes = json.load(f)
     
     # Initialize retriever model
