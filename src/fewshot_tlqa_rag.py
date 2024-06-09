@@ -1,3 +1,4 @@
+import os
 from knn import KnnSearch
 from utils import json_to_list
 from transformers import T5Tokenizer, T5ForConditionalGeneration
@@ -91,13 +92,30 @@ if __name__ == '__main__':
     model = args.model_name
 
     knn = KnnSearch()
-    test_set = json_to_list("../data/test_TLQA.json")
-    train_set = json_to_list("../data/train_TLQA.json")
+
+    # Check if the files exist
+    data_dir = "../data"
+    test_file_path = os.path.join(data_dir, "test_TLQA.json")
+    train_file_path = os.path.join(data_dir, "train_TLQA.json")
+    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes.json")
+
+    # Print the contents of the data directory
+    print("Contents of the data directory:")
+    print(os.listdir(data_dir))
+
+    if not os.path.exists(test_file_path):
+        raise FileNotFoundError(f"{test_file_path} not found.")
+    if not os.path.exists(train_file_path):
+        raise FileNotFoundError(f"{train_file_path} not found.")
+    if not os.path.exists(infoboxes_file_path):
+        raise FileNotFoundError(f"{infoboxes_file_path} not found.")
+    
+    test_set = json_to_list(test_file_path)
+    train_set = json_to_list(train_file_path)
     train_questions = get_transfer_questions(train_set)   # Keep questions only to embed (to use in similarity metric)
     train_questions_emb = knn.get_embeddings_for_data(train_questions)
     
     # Load infoboxes
-    infoboxes_file_path = "../data/extracted_infoboxes.json"
     with open(infoboxes_file_path, 'r') as f:
         infoboxes = json.load(f)
     
@@ -106,6 +124,10 @@ if __name__ == '__main__':
 
     print(f"\n\nStarting {k}-shot evaluation on {model} with context retrieval...\n\n")
     fewshot_eval_with_context(K=k, model_name=model, test_data=test_set, train_data=train_set, train_emb=train_questions_emb, infoboxes=infoboxes, retriever=retriever)
+
+
+
+
 '''
 import json
 from transformers import T5Tokenizer, T5ForConditionalGeneration
