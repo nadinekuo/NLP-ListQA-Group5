@@ -1,14 +1,13 @@
 import json
-from transformers import T5Tokenizer, T5ForConditionalGeneration, AutoTokenizer, AutoModelForSequenceClassification
+from transformers import T5Tokenizer, T5ForConditionalGeneration
+from sentence_transformers import SentenceTransformer, util
 import torch
 from datasets import Dataset
 from langchain_core.prompts.few_shot import FewShotPromptTemplate
 from langchain_core.prompts.prompt import PromptTemplate
 import argparse
-from sentence_transformers import SentenceTransformer, util
 import numpy as np
-
-# NOTE: This script is based on TLQA_few_shot_ipynb, but adapted to run using GPU
+import faiss
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Few shot eval with RAG')
@@ -21,6 +20,11 @@ def parse_args():
     parser.add_argument('--infobox-data', default='../data/extracted_infoboxes.json', help='Path to the extracted infoboxes data')
     args = parser.parse_args()
     return args
+
+def json_to_list(json_file_path):
+    with open(json_file_path, 'r') as file:
+        data = json.load(file)
+    return data
 
 def get_transfer_questions(transfer_data):
     return [data["question"] for data in transfer_data]
@@ -109,8 +113,6 @@ def main():
     train_set = json_to_list(args.train_data)
     train_questions = get_transfer_questions(train_set)
     train_questions_emb = np.load(args.train_emb)
-    
-    knn = KnnSearch()
     
     fewshot_eval(K=args.k, model_name=args.model_name, retriever_name=args.retriever_name, test_data=test_set, train_data=train_set, train_emb=train_questions_emb, infobox_data=args.infobox_data)
 
