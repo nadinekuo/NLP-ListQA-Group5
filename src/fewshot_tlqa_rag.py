@@ -1,3 +1,4 @@
+#1
 import os
 from knn import KnnSearch
 from utils import json_to_list
@@ -93,13 +94,15 @@ if __name__ == '__main__':
 
     knn = KnnSearch()
 
-    # Check if the files exist
-    data_dir = "../data"
+    # Define absolute path to the data directory
+    data_dir = os.path.abspath("../data")
     test_file_path = os.path.join(data_dir, "test_TLQA.json")
     train_file_path = os.path.join(data_dir, "train_TLQA.json")
     infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes.json")
 
-    # Print the contents of the data directory
+    # Print the current working directory and the contents of the data directory
+    print("Current working directory:", os.getcwd())
+    print("Absolute path of data directory:", data_dir)
     print("Contents of the data directory:")
     print(os.listdir(data_dir))
 
