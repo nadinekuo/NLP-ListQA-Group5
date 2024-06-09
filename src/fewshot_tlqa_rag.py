@@ -1,4 +1,3 @@
-import os
 from knn import KnnSearch
 from utils import json_to_list
 from transformers import T5Tokenizer, T5ForConditionalGeneration
@@ -92,26 +91,13 @@ if __name__ == '__main__':
     model = args.model_name
 
     knn = KnnSearch()
-
-    # Check if the files exist
-    data_dir = "data"
-    test_file_path = os.path.join(data_dir, "test_TLQA.json")
-    train_file_path = os.path.join(data_dir, "train_TLQA.json")
-    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes.json")
-
-    if not os.path.exists(test_file_path):
-        raise FileNotFoundError(f"{test_file_path} not found.")
-    if not os.path.exists(train_file_path):
-        raise FileNotFoundError(f"{train_file_path} not found.")
-    if not os.path.exists(infoboxes_file_path):
-        raise FileNotFoundError(f"{infoboxes_file_path} not found.")
-    
-    test_set = json_to_list(test_file_path)
-    train_set = json_to_list(train_file_path)
+    test_set = json_to_list("../data/test_TLQA.json")
+    train_set = json_to_list("../data/train_TLQA.json")
     train_questions = get_transfer_questions(train_set)   # Keep questions only to embed (to use in similarity metric)
     train_questions_emb = knn.get_embeddings_for_data(train_questions)
     
     # Load infoboxes
+    infoboxes_file_path = "../data/extracted_infoboxes.json"
     with open(infoboxes_file_path, 'r') as f:
         infoboxes = json.load(f)
     
