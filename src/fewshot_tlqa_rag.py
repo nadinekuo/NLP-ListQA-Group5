@@ -76,7 +76,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         few_shot_prompt = prompt.format(input=test_question, context=top_infobox)
         
         # Print the prompt to see how it looks
-        print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
+        #print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
         
         results_GT_dict['prompts'].append(few_shot_prompt)
         
