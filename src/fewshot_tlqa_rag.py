@@ -138,7 +138,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         top_infobox = infoboxes[top_infobox_id]['infobox']
 
         # Truncate the context to fit within the sequence length limit
-        # top_infobox = top_infobox[:MAX_SEQUENCE_LENGTH // 2]  # Adjust the truncation as needed
+        top_infobox = top_infobox[:MAX_SEQUENCE_LENGTH // 2]  # Adjust the truncation as needed
 
         # Create the few-shot prompt template and feed to model
         prompt = FewShotPromptTemplate(
@@ -250,7 +250,8 @@ def extract_infoboxes_from_file(input_file):
         mean_date = calculate_mean_date(dates) if dates else None
         parsed_infoboxes.append({
             'title': infobox['title'],
-            'infobox': parsed_infobox,
+            'parsed_info_box': parsed_infobox,
+            'infobox': infobox['infobox'],
             'is_global_mean': False if mean_date else True,
             'mean_date': mean_date if mean_date else None  # string format
         })
