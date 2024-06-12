@@ -1,3 +1,4 @@
+    '''
 #1
 import os
 from knn import KnnSearch
@@ -448,4 +449,4 @@ if __name__ == '__main__':
     retriever = SentenceTransformer('sentence-transformers/msmarco-distilbert-base-v4')
     print(f"\n\nStarting {k}-shot evaluation on {model} with context retrieval...\n\n")
     fewshot_eval_with_context(K=k, model_name=model, test_data=test_set, train_data=train_set, train_emb=train_questions_emb, infoboxes=infoboxes, retriever=retriever)
-    '''
+
