@@ -17,6 +17,7 @@ import re
 from datetime import datetime
 import statistics
 import numpy as np
+import heapq
 
 KNN_SEARCH = KnnSearch()
 
@@ -54,8 +55,34 @@ def extract_years_and_convert_to_datetime(sentence):
     return datetime.fromtimestamp(np.mean(np.array(timestamps)))
 
 
+def temporal_score(question_date: datetime, infobox_date: datetime):
+    alpha = 365.0
+    return alpha / ((question_date.timestamp() - infobox_date.timestamp()) + 1e-10)
+
+
+def mean_std_temporal(all_test_question_dates, all_infoboxes_dates):
+    temporal_scores = []
+    for question_date in all_test_question_dates:
+        for infobox_date in all_infoboxes_dates:
+            temporal_scores.append(temporal_score(question_date, infobox_date))
+
+    scores = np.array(temporal_scores)
+    return np.mean(scores), np.std(scores)
+
+
+def mean_std_semantic(all_test_questions, all_infoboxes_text):
+    semantic_scores = []
+    for question_emb in all_test_questions:
+        for infobox_emb in all_infoboxes_text:
+            score = util.cos_sim(question_emb, infobox_emb).tolist()[0][0]
+            semantic_scores.append(score)
+
+    scores = np.array(semantic_scores)
+    return np.mean(scores), np.std(scores)
+
+
 # Few-shot Evaluation with Context Retrieval
-def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever):  
+def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever):
     MAX_OUTPUT_LEN = 200
     MAX_SEQUENCE_LENGTH = 512  # Model's max sequence length
 
@@ -70,25 +97,48 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         input_variables=["question", "answers"], template="Question: {question}\n{answers}"
     )
 
+    all_test_question_dates = [extract_years_and_convert_to_datetime(test_d['question']) for test_d in test_data]
+    all_infoboxes_dates = [infobox['mean_date'] for infobox in infoboxes]
+    temporal_mean, temporal_std = mean_std_temporal(all_test_question_dates, all_infoboxes_dates)
+
+    infobox_texts = [infobox['infobox'] for infobox in infoboxes]
+    all_test_questions = [retriever.encode(test_d['question'], convert_to_tensor=True) for test_d in test_data]
+    infobox_embeddings = retriever.encode(infobox_texts, convert_to_tensor=True)
+    semantic_mean, semantic_std = mean_std_semantic(all_test_questions, infobox_embeddings)
+
     # Convert test set to list and loop over all items
     for i, item in enumerate(test_data):
         # For each test question, retrieve k neighbours
         test_question = test_data[i]['question']
-        print(f"Test question {i}: {test_question}")
+        test_question_date = extract_years_and_convert_to_datetime(test_question)
+
+        print(f"Test question {i}: {test_question} of date {test_question_date}")
 
         # Retrieve k-nearest neighbors from training data
-        neighs = KNN_SEARCH.get_top_n_neighbours(sentence=test_question, data_emb=train_emb, transfer_data=train_data, k=K)
+        neighs = KNN_SEARCH.get_top_n_neighbours(sentence=test_question, data_emb=train_emb, transfer_data=train_data,
+                                                 k=K)
         simple_neighs = simplify_dict_list(neighs)
 
         # Retrieve top-1 relevant context from infoboxes
-        infobox_texts = [infobox['infobox'] for infobox in infoboxes]
-        infobox_embeddings = retriever.encode(infobox_texts, convert_to_tensor=True)
         query_embedding = retriever.encode(test_question, convert_to_tensor=True)
-        hits = util.semantic_search(query_embedding, infobox_embeddings, top_k=K)[0]
-        top_infobox = infoboxes[hits[0]['corpus_id']]['infobox']
+        hits = util.semantic_search(query_embedding, infobox_embeddings, top_k=len(infobox_embeddings))[0]
+
+        score_by_infobox_id = {}
+        for hit in hits:
+            infobox_id = int(hit['corpus_id'])
+            semantic_sc = hit['score']
+            temporal_sc = temporal_score(test_question_date, infoboxes[infobox_id]['mean_date'])
+            temporal_sc = ((temporal_sc - temporal_mean) / temporal_std) * semantic_std + semantic_mean
+            score_by_infobox_id[infobox_id] = temporal_sc + semantic_sc
+
+        top_k = heapq.nlargest(K, score_by_infobox_id.items(), key=lambda item: item[1])
+        top_k_infobox_ids = [key for key, value in top_k]
+
+        top_infobox_id = top_k_infobox_ids[0]
+        top_infobox = infoboxes[top_infobox_id]['infobox']
 
         # Truncate the context to fit within the sequence length limit
-        top_infobox = top_infobox[:MAX_SEQUENCE_LENGTH // 2]  # Adjust the truncation as needed
+        # top_infobox = top_infobox[:MAX_SEQUENCE_LENGTH // 2]  # Adjust the truncation as needed
 
         # Create the few-shot prompt template and feed to model
         prompt = FewShotPromptTemplate(
@@ -104,7 +154,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
                                         ")
 
         # "<s>[INST] <<SYS>>\nUse the following context to answer the question at the end. Do not use any other information. If you can't find the relevant information in the context, just say you don't have enough information to answer the question. Don't try to make up an answer.\n\n<</SYS>>\n\n{context}\n\nQuestion: {input} [/INST]"
-        
+
         # Print the prompt to see how it looks
         # print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
 
@@ -189,7 +239,7 @@ def calculate_mean_date(dates):
     return mean_datetime
 
 
-def parse_infoboxes_from_file(input_file):
+def extract_infoboxes_from_file(input_file):
     with open(input_file, 'r') as f:
         infoboxes = json.load(f)
 
@@ -201,7 +251,8 @@ def parse_infoboxes_from_file(input_file):
         parsed_infoboxes.append({
             'title': infobox['title'],
             'infobox': parsed_infobox,
-            'mean_date': mean_date.isoformat() if mean_date else None
+            'is_global_mean': False if mean_date else True,
+            'mean_date': mean_date if mean_date else None  # string format
         })
         if mean_date:
             all_dates.append(mean_date)
@@ -209,22 +260,23 @@ def parse_infoboxes_from_file(input_file):
     return parsed_infoboxes, all_dates
 
 
-if __name__ == '__main__':
-    dump_file = '../data/enwiki-20240501-pages-articles1.xml-p1p41242.bz2'
-    output_file = '../data/output_infoboxes.json'
-    # extract_infoboxes(dump_file, output_file)
-
-    # all dates are in the form of datetime
-    parsed_infoboxes, all_dates = parse_infoboxes_from_file('../data/extracted_infoboxes.json')
+def parse_infoboxes_from_file(input_file):
+    parsed_infoboxes, all_dates = extract_infoboxes_from_file(input_file)
     mean_date = datetime.fromtimestamp(statistics.mean(dt.timestamp() for dt in all_dates))
     for infobox in parsed_infoboxes:
         if infobox['mean_date'] is None:
-            infobox['mean_date'] = mean_date.isoformat()
+            infobox['mean_date'] = mean_date
 
-    all_dates = [box['mean_date'] for box in parsed_infoboxes]
+    return parsed_infoboxes
 
-    with open(output_file, 'w') as f:
-        json.dump(parsed_infoboxes, f, indent=2)
+
+if __name__ == '__main__':
+    # dump_file = '../data/enwiki-20240501-pages-articles1.xml-p1p41242.bz2'
+    output_file = '../data/output_infoboxes.json'
+    # extract_infoboxes(dump_file, output_file)
+
+    # with open(output_file, 'w') as f:
+    #     json.dump(parsed_infoboxes, f, indent=2)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args = parse_args()
@@ -256,8 +308,8 @@ if __name__ == '__main__':
     train_questions_emb = KNN_SEARCH.get_embeddings_for_data(train_questions)
 
     # Load infoboxes
-    with open(infoboxes_file_path, 'r') as f:
-        infoboxes = json.load(f)
+    infoboxes = parse_infoboxes_from_file(infoboxes_file_path)
+
 
     # Initialize retriever model
     retriever = SentenceTransformer('sentence-transformers/msmarco-distilbert-base-v4')
