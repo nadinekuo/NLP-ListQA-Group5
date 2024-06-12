@@ -56,7 +56,9 @@ def extract_years_and_convert_to_datetime(sentence):
 
 
 def temporal_score(question_date: datetime, infobox_date: datetime):
-    alpha = 365.0
+    alpha = 1e+7  # This parameter was manually tuned to have at least some impact on our model
+    if question_date < infobox_date:
+        return 1e-100
     return alpha / ((question_date.timestamp() - infobox_date.timestamp()) + 1e-10)
 
 
@@ -64,7 +66,8 @@ def mean_std_temporal(all_test_question_dates, all_infoboxes_dates):
     temporal_scores = []
     for question_date in all_test_question_dates:
         for infobox_date in all_infoboxes_dates:
-            temporal_scores.append(temporal_score(question_date, infobox_date))
+            if question_date >= infobox_date:
+                temporal_scores.append(temporal_score(question_date, infobox_date))
 
     scores = np.array(temporal_scores)
     return np.mean(scores), np.std(scores)
@@ -311,4 +314,4 @@ if __name__ == '__main__':
 
     print(f"\n\nStarting {k}-shot evaluation on {model} with context retrieval...\n\n")
     fewshot_eval_with_context(K=k, model_name=model, test_data=test_set, train_data=train_set,
-                              train_emb=train_questions_emb, infoboxes=infoboxes, retriever=retriever)
+                              train_emb=train_questions_emb, infoboxes=infoboxes, retriever=retriever, is_temporal_enabled=True)
