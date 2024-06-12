@@ -119,11 +119,11 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         print(f"Test question {i}: {test_question} of date {test_question_date}")
 
         # Retrieve k-nearest neighbors from training data
-        neighs = KNN_SEARCH.get_top_n_neighbours(sentence=test_question, data_emb=train_emb, transfer_data=train_data,
-                                                 k=K)
+        query_embedding = all_test_questions[test_question]
+
+        neighs = KNN_SEARCH.get_top_n_neighbours1(sent_emb=query_embedding, data_emb=train_emb, transfer_data=train_data, k=K)
         simple_neighs = simplify_dict_list(neighs)
         # Retrieve top-1 relevant context from infoboxes
-        query_embedding = all_test_questions[test_question]
 
         if is_temporal_enabled:
             hits = util.semantic_search(query_embedding, infobox_embeddings, top_k=len(infobox_embeddings))[0]
@@ -300,17 +300,18 @@ if __name__ == '__main__':
     if not os.path.exists(infoboxes_file_path):
         raise FileNotFoundError(f"{infoboxes_file_path} not found.")
 
+    transformer = 'sentence-transformers/msmarco-distilbert-base-v4'
+    # transformer = 'sentence-transformers/all-mpnet-base-v2'
     test_set = json_to_list(test_file_path)
     train_set = json_to_list(train_file_path)
     train_questions = get_transfer_questions(train_set)  # Keep questions only to embed (to use in similarity metric)
-    train_questions_emb = KNN_SEARCH.get_embeddings_for_data(train_questions)
+    train_questions_emb = KNN_SEARCH.get_embeddings_for_data(train_questions, transformer=transformer, convert_to_tensor=True)
 
     # Load infoboxes
     infoboxes = parse_infoboxes_from_file(infoboxes_file_path)
 
-
     # Initialize retriever model
-    retriever = SentenceTransformer('sentence-transformers/msmarco-distilbert-base-v4')
+    retriever = SentenceTransformer(transformer)
 
     print(f"\n\nStarting {k}-shot evaluation on {model} with context retrieval...\n\n")
     fewshot_eval_with_context(K=k, model_name=model, test_data=test_set, train_data=train_set,
