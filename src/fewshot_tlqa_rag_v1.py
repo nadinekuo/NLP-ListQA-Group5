@@ -220,6 +220,17 @@ if __name__ == '__main__':
     args = parse_args()
     k = args.k
     model = args.model_name
+
+        # Enable mixed precision
+    model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
+    model.half()
+    tokenizer = T5Tokenizer.from_pretrained(model_name, torch_dtype=torch.float16)
+
+    # Clear CUDA cache
+    torch.cuda.empty_cache()
+
+
+    
     # Define absolute path to the data directory
     data_dir = os.path.abspath("../data")
     test_file_path = os.path.join(data_dir, "test_TLQA.json")
