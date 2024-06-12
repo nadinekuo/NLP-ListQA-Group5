@@ -58,7 +58,7 @@ def extract_years_and_convert_to_datetime(sentence):
 def temporal_score(question_date: datetime, infobox_date: datetime):
     alpha = 1e+7  # This parameter was manually tuned to have at least some impact on our model
     if question_date < infobox_date:
-        return 1e-100
+        return -1e+10
     return alpha / ((question_date.timestamp() - infobox_date.timestamp()) + 1e-10)
 
 
