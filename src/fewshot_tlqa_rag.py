@@ -1,4 +1,4 @@
-#4
+# 4
 import os
 from knn import KnnSearch
 from utils import json_to_list
@@ -8,8 +8,18 @@ from datasets import Dataset
 from langchain_core.prompts.few_shot import FewShotPromptTemplate
 from langchain_core.prompts.prompt import PromptTemplate
 from sentence_transformers import SentenceTransformer, util
+import mwxml
+import mwparserfromhell
 import json
+import bz2
 import argparse
+import re
+from datetime import datetime
+import statistics
+import numpy as np
+
+KNN_SEARCH = KnnSearch()
+
 
 # Argument Parsing
 def parse_args():
@@ -19,6 +29,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+
 # Extracts all questions from the (train) set used for getting neighbours
 def get_transfer_questions(transfer_data):
     transfer_questions = []
@@ -26,19 +37,33 @@ def get_transfer_questions(transfer_data):
         transfer_questions.append(data["question"])
     return transfer_questions
 
+
 def simplify_dict_list(dict_list):
     return [{'question': item['question'], 'answers': item['answers']} for item in dict_list]
+
+
+def extract_years_and_convert_to_datetime(sentence):
+    year_pattern = r'\b\d{4}\b'
+    years = re.findall(year_pattern, sentence)
+    timestamps = []
+    for year in years:
+        date_string = f"January 1, {year}"  # Assuming January 1 for simplicity
+        date_object = datetime.strptime(date_string, "%B %d, %Y")
+        timestamps.append(date_object.timestamp())
+
+    return datetime.fromtimestamp(np.mean(np.array(timestamps)))
+
 
 # Few-shot Evaluation with Context Retrieval
 def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever):  
     MAX_OUTPUT_LEN = 200
     MAX_SEQUENCE_LENGTH = 512  # Model's max sequence length
-    
+
     model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
     tokenizer = T5Tokenizer.from_pretrained(model_name, torch_dtype=torch.float16)
-    
-    results_GT_dict = {'prompts': [], 'outputs': [], 'output_tokens': [], 
-                                'ground_truths': [], 'ground_truth_tokens': []}  
+
+    results_GT_dict = {'prompts': [], 'outputs': [], 'output_tokens': [],
+                       'ground_truths': [], 'ground_truth_tokens': []}
 
     # Configure formatter that will format the few-shot examples into a string
     example_prompt = PromptTemplate(
@@ -47,13 +72,12 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
 
     # Convert test set to list and loop over all items
     for i, item in enumerate(test_data):
-        
         # For each test question, retrieve k neighbours
         test_question = test_data[i]['question']
         print(f"Test question {i}: {test_question}")
 
         # Retrieve k-nearest neighbors from training data
-        neighs = knn.get_top_n_neighbours(sentence=test_question, data_emb=train_emb, transfer_data=train_data, k=K)
+        neighs = KNN_SEARCH.get_top_n_neighbours(sentence=test_question, data_emb=train_emb, transfer_data=train_data, k=K)
         simple_neighs = simplify_dict_list(neighs)
 
         # Retrieve top-1 relevant context from infoboxes
@@ -62,10 +86,10 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         query_embedding = retriever.encode(test_question, convert_to_tensor=True)
         hits = util.semantic_search(query_embedding, infobox_embeddings, top_k=K)[0]
         top_infobox = infoboxes[hits[0]['corpus_id']]['infobox']
-        
+
         # Truncate the context to fit within the sequence length limit
         top_infobox = top_infobox[:MAX_SEQUENCE_LENGTH // 2]  # Adjust the truncation as needed
-        
+
         # Create the few-shot prompt template and feed to model
         prompt = FewShotPromptTemplate(
             examples=simple_neighs,  # No. of few shot examples is defined by sysarg K
@@ -74,18 +98,18 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
             input_variables=["input"],
         )
         few_shot_prompt = prompt.format(input=f"{test_question}\nPlease answer this question in the same format as the {K} examples above.\n\n\
-                                            Use the following context to answer the question at the end. Do not use any other information.\ 
-                                            If you can't find the relevant information in the context, just say you don't have enough information to answer the question.\ 
+                                            Use the following context to answer the question at the end. Do not use any other information.\
+                                            If you can't find the relevant information in the context, just say you don't have enough information to answer the question.\
                                             Don't try to make up an answer.\n\n{top_infobox} 
                                         ")
 
         # "<s>[INST] <<SYS>>\nUse the following context to answer the question at the end. Do not use any other information. If you can't find the relevant information in the context, just say you don't have enough information to answer the question. Don't try to make up an answer.\n\n<</SYS>>\n\n{context}\n\nQuestion: {input} [/INST]"
         
         # Print the prompt to see how it looks
-        #print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
-        
+        # print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
+
         results_GT_dict['prompts'].append(few_shot_prompt)
-        
+
         input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids.to(device)
         output_tokens = model.generate(input_ids, max_length=MAX_OUTPUT_LEN)
         output = tokenizer.decode(output_tokens[0])
@@ -99,13 +123,113 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
     results_ds = Dataset.from_dict(results_GT_dict)
     results_ds.save_to_disk(f"{K}_shot_{model_name}_with_context.hf")  # Ensure different name to prevent overwriting
 
+
+def convert_to_datetime(date_str):
+    # Try to convert date_str to a datetime object with multiple formats
+    for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y'):
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Date format for {date_str} not recognized")
+
+
+def extract_infoboxes(dump_file, output_file):
+    dump = mwxml.Dump.from_file(bz2.open(dump_file))
+    infoboxes = []
+
+    for page in dump:
+        if page.namespace != 0:  # Only process articles in the main namespace
+            continue
+        if page.redirect:  # Skip redirects
+            continue
+        for revision in page:
+            if revision.text is None:
+                continue
+            wikicode = mwparserfromhell.parse(revision.text)
+            templates = wikicode.filter_templates()
+            for template in templates:
+                if template.name.lower().startswith("infobox"):
+                    infobox = {"title": page.title, "infobox": str(template)}
+                    infoboxes.append(infobox)
+            break  # Process only the latest revision
+
+    with open(output_file, 'w') as f:
+        json.dump(infoboxes, f, indent=2)
+
+
+def parse_infobox(infobox_wikitext):
+    wikicode = mwparserfromhell.parse(infobox_wikitext)
+    templates = wikicode.filter_templates()
+
+    infobox_data = {}
+    dates = []
+    date_pattern = re.compile(r'\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|\d{2}/\d{2}/\d{4}')
+
+    for template in templates:
+        template_name = str(template.name).strip()
+        fields = {}
+        for param in template.params:
+            param_name = str(param.name).strip()
+            param_value = str(param.value).strip()
+            fields[param_name] = param_value
+
+            # Find all dates in the parameter value
+            dates.extend(date_pattern.findall(param_value))
+
+        infobox_data[template_name] = fields
+
+    return infobox_data, dates
+
+
+def calculate_mean_date(dates):
+    datetime_objects = [convert_to_datetime(date) for date in dates]
+    mean_timestamp = statistics.mean(dt.timestamp() for dt in datetime_objects)
+    mean_datetime = datetime.fromtimestamp(mean_timestamp)
+    return mean_datetime
+
+
+def parse_infoboxes_from_file(input_file):
+    with open(input_file, 'r') as f:
+        infoboxes = json.load(f)
+
+    parsed_infoboxes = []
+    all_dates = []
+    for infobox in infoboxes:
+        parsed_infobox, dates = parse_infobox(infobox['infobox'])
+        mean_date = calculate_mean_date(dates) if dates else None
+        parsed_infoboxes.append({
+            'title': infobox['title'],
+            'infobox': parsed_infobox,
+            'mean_date': mean_date.isoformat() if mean_date else None
+        })
+        if mean_date:
+            all_dates.append(mean_date)
+
+    return parsed_infoboxes, all_dates
+
+
 if __name__ == '__main__':
+    dump_file = '../data/enwiki-20240501-pages-articles1.xml-p1p41242.bz2'
+    output_file = '../data/output_infoboxes.json'
+    # extract_infoboxes(dump_file, output_file)
+
+    # all dates are in the form of datetime
+    parsed_infoboxes, all_dates = parse_infoboxes_from_file('../data/extracted_infoboxes.json')
+    mean_date = datetime.fromtimestamp(statistics.mean(dt.timestamp() for dt in all_dates))
+    for infobox in parsed_infoboxes:
+        if infobox['mean_date'] is None:
+            infobox['mean_date'] = mean_date.isoformat()
+
+    all_dates = [box['mean_date'] for box in parsed_infoboxes]
+
+    with open(output_file, 'w') as f:
+        json.dump(parsed_infoboxes, f, indent=2)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args = parse_args()
     k = args.k
     model = args.model_name
-
-    knn = KnnSearch()
 
     # Define absolute path to the data directory
     data_dir = os.path.abspath("../data")
@@ -125,401 +249,19 @@ if __name__ == '__main__':
         raise FileNotFoundError(f"{train_file_path} not found.")
     if not os.path.exists(infoboxes_file_path):
         raise FileNotFoundError(f"{infoboxes_file_path} not found.")
-    
+
     test_set = json_to_list(test_file_path)
     train_set = json_to_list(train_file_path)
-    train_questions = get_transfer_questions(train_set)   # Keep questions only to embed (to use in similarity metric)
-    train_questions_emb = knn.get_embeddings_for_data(train_questions)
-    
+    train_questions = get_transfer_questions(train_set)  # Keep questions only to embed (to use in similarity metric)
+    train_questions_emb = KNN_SEARCH.get_embeddings_for_data(train_questions)
+
     # Load infoboxes
     with open(infoboxes_file_path, 'r') as f:
         infoboxes = json.load(f)
-    
+
     # Initialize retriever model
     retriever = SentenceTransformer('sentence-transformers/msmarco-distilbert-base-v4')
 
     print(f"\n\nStarting {k}-shot evaluation on {model} with context retrieval...\n\n")
-    fewshot_eval_with_context(K=k, model_name=model, test_data=test_set, train_data=train_set, train_emb=train_questions_emb, infoboxes=infoboxes, retriever=retriever)
-
-
-
-
-'''
-#1     WORKS?
-import os
-from knn import KnnSearch
-from utils import json_to_list
-from transformers import T5Tokenizer, T5ForConditionalGeneration
-import torch
-from datasets import Dataset
-from langchain_core.prompts.few_shot import FewShotPromptTemplate
-from langchain_core.prompts.prompt import PromptTemplate
-from sentence_transformers import SentenceTransformer, util
-import json
-import argparse
-
-# Argument Parsing
-def parse_args():
-    parser = argparse.ArgumentParser(description='Few shot eval with context retrieval')
-    parser.add_argument('--k', default=3)
-    parser.add_argument('--model-name', default='google/flan-t5-large')
-    args = parser.parse_args()
-    return args
-
-# Extracts all questions from the (train) set used for getting neighbours
-def get_transfer_questions(transfer_data):
-    transfer_questions = []
-    for index, data in enumerate(transfer_data):
-        transfer_questions.append(data["question"])
-    return transfer_questions
-
-def simplify_dict_list(dict_list):
-    return [{'question': item['question'], 'answers': item['answers']} for item in dict_list]
-
-# Few-shot Evaluation with Context Retrieval
-def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever):  
-    MAX_OUTPUT_LEN = 200
-    
-    model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
-    tokenizer = T5Tokenizer.from_pretrained(model_name, torch_dtype=torch.float16)
-    
-    results_GT_dict = {'prompts': [], 'outputs': [], 'output_tokens': [], 
-                                'ground_truths': [], 'ground_truth_tokens': []}  
-
-    # Configure formatter that will format the few-shot examples into a string
-    example_prompt = PromptTemplate(
-        input_variables=["question", "answers"], template="Question: {question}\n{answers}"
-    )
-
-    # Convert test set to list and loop over all items
-    for i, item in enumerate(test_data):
-        
-        # For each test question, retrieve k neighbours
-        test_question = test_data[i]['question']
-        print(f"Test question {i}: {test_question}")
-
-        # Retrieve k-nearest neighbors from training data
-        neighs = knn.get_top_n_neighbours(sentence=test_question, data_emb=train_emb, transfer_data=train_data, k=K)
-        simple_neighs = simplify_dict_list(neighs)
-
-        # Retrieve top-1 relevant context from infoboxes
-        infobox_texts = [infobox['infobox'] for infobox in infoboxes]
-        infobox_embeddings = retriever.encode(infobox_texts, convert_to_tensor=True)
-        query_embedding = retriever.encode(test_question, convert_to_tensor=True)
-        hits = util.semantic_search(query_embedding, infobox_embeddings, top_k=1)[0]
-        top_infobox = infoboxes[hits[0]['corpus_id']]['infobox']
-        
-        # Create the few-shot prompt template and feed to model
-        prompt = FewShotPromptTemplate(
-            examples=simple_neighs,
-            example_prompt=example_prompt,
-            suffix="<s>[INST] <<SYS>>\nUse the following context to answer the question at the end. Do not use any other information. If you can't find the relevant information in the context, just say you don't have enough information to answer the question. Don't try to make up an answer.\n\n<</SYS>>\n\n{context}\n\nQuestion: {input} [/INST]",
-            input_variables=["input", "context"],
-        )
-        few_shot_prompt = prompt.format(input=test_question, context=top_infobox)
-        results_GT_dict['prompts'].append(few_shot_prompt)
-        
-        input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids.to(device)
-        output_tokens = model.generate(input_ids, max_length=MAX_OUTPUT_LEN)
-        output = tokenizer.decode(output_tokens[0])
-
-        results_GT_dict['output_tokens'].append(output_tokens[0])
-        results_GT_dict['outputs'].append(output)
-        results_GT_dict['ground_truths'].append(test_data[i]['final_answers'])
-        gt_tokens = tokenizer(str(test_data[i]['final_answers']), return_tensors="pt").input_ids[0]
-        results_GT_dict['ground_truth_tokens'].append(gt_tokens)
-
-    results_ds = Dataset.from_dict(results_GT_dict)
-    results_ds.save_to_disk(f"{K}_shot_{model_name}_with_context.hf")  # Ensure different name to prevent overwriting
-
-
-if __name__ == '__main__':
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    args = parse_args()
-    k = args.k
-    model = args.model_name
-
-    knn = KnnSearch()
-
-    # Define absolute path to the data directory
-    data_dir = os.path.abspath("../data")
-    test_file_path = os.path.join(data_dir, "test_TLQA.json")
-    train_file_path = os.path.join(data_dir, "train_TLQA.json")
-    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes.json")
-
-    # Print the current working directory and the contents of the data directory
-    print("Current working directory:", os.getcwd())
-    print("Absolute path of data directory:", data_dir)
-    print("Contents of the data directory:")
-    print(os.listdir(data_dir))
-
-    if not os.path.exists(test_file_path):
-        raise FileNotFoundError(f"{test_file_path} not found.")
-    if not os.path.exists(train_file_path):
-        raise FileNotFoundError(f"{train_file_path} not found.")
-    if not os.path.exists(infoboxes_file_path):
-        raise FileNotFoundError(f"{infoboxes_file_path} not found.")
-    
-    test_set = json_to_list(test_file_path)
-    train_set = json_to_list(train_file_path)
-    train_questions = get_transfer_questions(train_set)   # Keep questions only to embed (to use in similarity metric)
-    train_questions_emb = knn.get_embeddings_for_data(train_questions)
-    
-    # Load infoboxes
-    with open(infoboxes_file_path, 'r') as f:
-        infoboxes = json.load(f)
-    
-    # Initialize retriever model
-    retriever = SentenceTransformer('sentence-transformers/msmarco-distilbert-base-v4')
-
-    print(f"\n\nStarting {k}-shot evaluation on {model} with context retrieval...\n\n")
-    fewshot_eval_with_context(K=k, model_name=model, test_data=test_set, train_data=train_set, train_emb=train_questions_emb, infoboxes=infoboxes, retriever=retriever)
-
-'''
-
-
-
-
-
-'''
-import json
-from transformers import T5Tokenizer, T5ForConditionalGeneration
-from sentence_transformers import SentenceTransformer, util
-import torch
-from datasets import Dataset
-from langchain_core.prompts.few_shot import FewShotPromptTemplate
-from langchain_core.prompts.prompt import PromptTemplate
-import argparse
-import numpy as np
-import faiss
-
-def parse_args():
-    parser = argparse.ArgumentParser(description='Few shot eval with RAG')
-    parser.add_argument('--k', default=3, type=int, help='Number of contexts to retrieve')
-    parser.add_argument('--model-name', default='google/flan-t5-large', help='Name of the generative model')
-    parser.add_argument('--retriever-name', default='sentence-transformers/msmarco-distilbert-base-tas-b', help='Name of the retriever model')
-    parser.add_argument('--test-data', default='../data/test_TLQA.json', help='Path to the test dataset')
-    parser.add_argument('--train-data', default='../data/train_TLQA.json', help='Path to the train dataset')
-    parser.add_argument('--train-emb', default='../data/train_TLQA_emb.npy', help='Path to the train embeddings')
-    parser.add_argument('--infobox-data', default='../data/extracted_infoboxes.json', help='Path to the extracted infoboxes data')
-    args = parser.parse_args()
-    return args
-
-def json_to_list(json_file_path):
-    with open(json_file_path, 'r') as file:
-        data = json.load(file)
-    return data
-
-def get_transfer_questions(transfer_data):
-    return [data["question"] for data in transfer_data]
-
-def simplify_dict_list(dict_list):
-    return [{'question': item['question'], 'answers': item['answers']} for item in dict_list]
-
-def retrieve_context(query, corpus, retriever, corpus_embeddings, top_k=1):
-    query_embedding = retriever.encode(query, convert_to_tensor=True)
-    hits = util.semantic_search(query_embedding, corpus_embeddings, top_k=top_k)
-    return [corpus[hit['corpus_id']] for hit in hits[0]]
-
-def generate_answer_with_context(question, context, model, tokenizer):
-    combined_context = " ".join(context)
-    input_text = f"Context: {combined_context}\n\nQuestion: {question}\n\nAnswer (please format as a timeline):"
-    inputs = tokenizer(input_text, return_tensors='pt', truncation=True, max_length=512)
-    outputs = model.generate(inputs.input_ids, max_length=200)
-    return tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-def knn_search(query_embedding, embeddings, k):
-    index = faiss.IndexFlatL2(embeddings.shape[1])
-    index.add(embeddings)
-    distances, indices = index.search(np.array([query_embedding]), k)
-    return indices[0]
-
-def fewshot_eval(K, model_name, retriever_name, test_data, train_data, train_emb, infobox_data):  
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
-    tokenizer = T5Tokenizer.from_pretrained(model_name)
-    
-    retriever = SentenceTransformer(retriever_name)
-    
-    with open(infobox_data) as f:
-        infoboxes = json.load(f)
-
-    corpus = [f"{item['title']}: {item['infobox']}" for item in infoboxes if 'title' in item and 'infobox' in item]
-    corpus_embeddings = retriever.encode(corpus, convert_to_tensor=True)
-    
-    results_GT_dict = {'prompts': [], 'outputs': [], 'output_tokens': [], 
-                       'ground_truths': [], 'ground_truth_tokens': []}
-
-    for i, item in enumerate(test_data):
-        test_question = item['question']
-        
-        # Retrieve few-shot examples using KNN
-        test_question_embedding = retriever.encode(test_question, convert_to_tensor=True).cpu().numpy()
-        few_shot_indices = knn_search(test_question_embedding, train_emb, k=K)
-        few_shot_examples = [train_data[i] for i in few_shot_indices]
-        
-        # Retrieve top-k contexts
-        top_k_contexts = retrieve_context(test_question, corpus, retriever, corpus_embeddings, top_k=K)
-        
-        # Create the few-shot prompt template and feed to model
-        simple_neighs = simplify_dict_list(few_shot_examples)
-        prompt = FewShotPromptTemplate(
-            examples=simple_neighs,
-            example_prompt=PromptTemplate(input_variables=["question", "answers"], template="Question: {question}\n{answers}"),
-            suffix="Question: {input}",
-            input_variables=["input"],
-        )
-        few_shot_prompt = prompt.format(input=f"{test_question} Please answer this question in the same format as the {K} examples above.")
-        
-        # Integrate context into the prompt
-        full_prompt = f"Context: {' '.join(top_k_contexts)}\n\n{few_shot_prompt}"
-        results_GT_dict['prompts'].append(full_prompt)
-        
-        input_ids = tokenizer(full_prompt, return_tensors="pt").input_ids.to(device)
-        output_tokens = model.generate(input_ids, max_length=200)
-        output = tokenizer.decode(output_tokens[0])
-
-        results_GT_dict['output_tokens'].append(output_tokens[0])
-        results_GT_dict['outputs'].append(output)
-        results_GT_dict['ground_truths'].append(item['final_answers'])
-        gt_tokens = tokenizer(str(item['final_answers']), return_tensors="pt").input_ids[0]
-        results_GT_dict['ground_truth_tokens'].append(gt_tokens)
-
-    results_ds = Dataset.from_dict(results_GT_dict)
-    results_ds.save_to_disk(f"{K}_shot_{model_name}.hf")
-
-def main():
-    args = parse_args()
-    
-    # Load datasets
-    test_set = json_to_list(args.test_data)
-    train_set = json_to_list(args.train_data)
-    train_questions = get_transfer_questions(train_set)
-    train_questions_emb = np.load(args.train_emb)
-    
-    fewshot_eval(K=args.k, model_name=args.model_name, retriever_name=args.retriever_name, test_data=test_set, train_data=train_set, train_emb=train_questions_emb, infobox_data=args.infobox_data)
-
-if __name__ == "__main__":
-    main()
-
-
-
-
-
-from knn import KnnSearch
-from utils import json_to_list
-from transformers import T5Tokenizer, T5ForConditionalGeneration, AutoTokenizer, AutoModelForSequenceClassification
-import torch
-from datasets import Dataset
-from langchain_core.prompts.few_shot import FewShotPromptTemplate
-from langchain_core.prompts.prompt import PromptTemplate
-import argparse
-import faiss
-import numpy as np
-
-# NOTE: This script is based on TLQA_few_shot_ipynb, but adapted to run using GPU
-
-def parse_args():
-    parser = argparse.ArgumentParser(description='Few shot eval with RAG')
-    parser.add_argument('--k', default=3, type=int, help='Number of contexts to retrieve')
-    parser.add_argument('--model-name', default='google/flan-t5-large', help='Name of the generative model')
-    parser.add_argument('--retriever-name', default='facebook/contriever', help='Name of the retriever model')
-    parser.add_argument('--test-data', default='../data/test_TLQA.json', help='Path to the test dataset')
-    parser.add_argument('--train-data', default='../data/train_TLQA.json', help='Path to the train dataset')
-    parser.add_argument('--train-emb', default='../data/train_TLQA_emb.npy', help='Path to the train embeddings')
-    args = parser.parse_args()
-    return args
-
-def get_transfer_questions(transfer_data):
-    return [data["question"] for data in transfer_data]
-
-def simplify_dict_list(dict_list):
-    return [{'question': item['question'], 'answers': item['answers']} for item in dict_list]
-
-def retrieve_top_k_contexts(query, corpus, retriever, tokenizer, k=1):
-    inputs = tokenizer(query, corpus, return_tensors='pt', padding=True, truncation=True)
-    outputs = retriever(**inputs)
-    top_k_indices = outputs.logits.topk(k).indices
-    return [corpus[i] for i in top_k_indices]
-
-def generate_answer_with_context(question, context, model, tokenizer):
-    combined_context = " ".join(context)
-    input_text = f"Context: {combined_context}\n\nQuestion: {question}\n\nAnswer (please format as a timeline):"
-    inputs = tokenizer(input_text, return_tensors='pt', truncation=True, max_length=512)
-    outputs = model.generate(inputs.input_ids, max_length=200)
-    return tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-def knn_search(query_embedding, embeddings, k):
-    index = faiss.IndexFlatL2(embeddings.shape[1])
-    index.add(embeddings)
-    distances, indices = index.search(np.array([query_embedding]), k)
-    return indices[0]
-
-def fewshot_eval(K, model_name, retriever_name, test_data, train_data, train_emb):  
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
-    tokenizer = T5Tokenizer.from_pretrained(model_name)
-    
-    retriever = AutoModelForSequenceClassification.from_pretrained(retriever_name).to(device)
-    retriever_tokenizer = AutoTokenizer.from_pretrained(retriever_name)
-    
-    results_GT_dict = {'prompts': [], 'outputs': [], 'output_tokens': [], 
-                       'ground_truths': [], 'ground_truth_tokens': []}
-
-    for i, item in enumerate(test_data):
-        test_question = item['question']
-        
-        # Retrieve few-shot examples using KNN
-        test_question_embedding = retriever_tokenizer(test_question, return_tensors='pt').input_ids
-        test_question_embedding = retriever(**test_question_embedding).logits.detach().cpu().numpy().flatten()
-        few_shot_indices = knn_search(test_question_embedding, train_emb, k=K)
-        few_shot_examples = [train_data[i] for i in few_shot_indices]
-        
-        # Retrieve top-k contexts
-        top_k_contexts = retrieve_top_k_contexts(test_question, train_data, retriever, retriever_tokenizer, k=K)
-        
-        # Create the few-shot prompt template and feed to model
-        simple_neighs = simplify_dict_list(few_shot_examples)
-        prompt = FewShotPromptTemplate(
-            examples=simple_neighs,
-            example_prompt=PromptTemplate(input_variables=["question", "answers"], template="Question: {question}\n{answers}"),
-            suffix="Question: {input}",
-            input_variables=["input"],
-        )
-        few_shot_prompt = prompt.format(input=f"{test_question} Please answer this question in the same format as the {K} examples above.")
-        
-        # Integrate context into the prompt
-        full_prompt = f"Context: {' '.join(top_k_contexts)}\n\n{few_shot_prompt}"
-        results_GT_dict['prompts'].append(full_prompt)
-        
-        input_ids = tokenizer(full_prompt, return_tensors="pt").input_ids.to(device)
-        output_tokens = model.generate(input_ids, max_length=200)
-        output = tokenizer.decode(output_tokens[0])
-
-        results_GT_dict['output_tokens'].append(output_tokens[0])
-        results_GT_dict['outputs'].append(output)
-        results_GT_dict['ground_truths'].append(item['final_answers'])
-        gt_tokens = tokenizer(str(item['final_answers']), return_tensors="pt").input_ids[0]
-        results_GT_dict['ground_truth_tokens'].append(gt_tokens)
-
-    results_ds = Dataset.from_dict(results_GT_dict)
-    results_ds.save_to_disk(f"{K}_shot_{model_name}.hf")
-
-def main():
-    args = parse_args()
-    
-    # Load datasets
-    test_set = json_to_list(args.test_data)
-    train_set = json_to_list(args.train_data)
-    train_questions = get_transfer_questions(train_set)
-    train_questions_emb = np.load(args.train_emb)
-    
-    knn = KnnSearch()
-    
-    fewshot_eval(K=args.k, model_name=args.model_name, retriever_name=args.retriever_name, test_data=test_set, train_data=train_set, train_emb=train_questions_emb)
-
-if __name__ == "__main__":
-    main()
-'''
+    fewshot_eval_with_context(K=k, model_name=model, test_data=test_set, train_data=train_set,
+                              train_emb=train_questions_emb, infoboxes=infoboxes, retriever=retriever)
