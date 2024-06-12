@@ -1,5 +1,4 @@
-    '''
-#1
+#2
 import os
 from knn import KnnSearch
 from utils import json_to_list
@@ -85,7 +84,7 @@ def mean_std_semantic(all_test_questions, all_infoboxes_text):
 # Few-shot Evaluation with Context Retrieval
 def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever, is_temporal_enabled=False):
     MAX_OUTPUT_LEN = 200
-    MAX_SEQUENCE_LENGTH = 512  # Model's max sequence length
+    MAX_SEQUENCE_LENGTH = 400  # Model's max sequence length
 
     model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
     tokenizer = T5Tokenizer.from_pretrained(model_name, torch_dtype=torch.float16)
@@ -444,7 +443,7 @@ if __name__ == '__main__':
     # Load infoboxes
     with open(infoboxes_file_path, 'r') as f:
         infoboxes = json.load(f)
-    
+        '''
     # Initialize retriever model
     retriever = SentenceTransformer('sentence-transformers/msmarco-distilbert-base-v4')
     print(f"\n\nStarting {k}-shot evaluation on {model} with context retrieval...\n\n")
