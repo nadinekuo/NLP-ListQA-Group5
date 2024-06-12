@@ -138,6 +138,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
             hits = util.semantic_search(query_embedding, infobox_embeddings, top_k=K)[0]
             top_k_infobox_ids = [hit['corpus_id'] for hit in hits]
 
+        print(top_k_infobox_ids)
         top_infobox_id = top_k_infobox_ids[0]
         top_infobox = infoboxes[top_infobox_id]['infobox']
 
