@@ -60,7 +60,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         infobox_texts = [infobox['infobox'] for infobox in infoboxes]
         infobox_embeddings = retriever.encode(infobox_texts, convert_to_tensor=True)
         query_embedding = retriever.encode(test_question, convert_to_tensor=True)
-        hits = util.semantic_search(query_embedding, infobox_embeddings, top_k=1)[0]
+        hits = util.semantic_search(query_embedding, infobox_embeddings, top_k=K)[0]
         top_infobox = infoboxes[hits[0]['corpus_id']]['infobox']
         
         # Truncate the context to fit within the sequence length limit
@@ -68,12 +68,18 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         
         # Create the few-shot prompt template and feed to model
         prompt = FewShotPromptTemplate(
-            examples=simple_neighs[:2],  # Limit the number of examples to 2 or adjust as needed
+            examples=simple_neighs,  # No. of few shot examples is defined by sysarg K
             example_prompt=example_prompt,
-            suffix="<s>[INST] <<SYS>>\nUse the following context to answer the question at the end. Do not use any other information. If you can't find the relevant information in the context, just say you don't have enough information to answer the question. Don't try to make up an answer.\n\n<</SYS>>\n\n{context}\n\nQuestion: {input} [/INST]",
-            input_variables=["input", "context"],
+            suffix="Question: {input}",
+            input_variables=["input"],
         )
-        few_shot_prompt = prompt.format(input=test_question, context=top_infobox)
+        few_shot_prompt = prompt.format(input=f"{test_question}\nPlease answer this question in the same format as the {K} examples above.\n\n\
+                                            Use the following context to answer the question at the end. Do not use any other information.\ 
+                                            If you can't find the relevant information in the context, just say you don't have enough information to answer the question.\ 
+                                            Don't try to make up an answer.\n\n{top_infobox} 
+                                        ")
+
+        # "<s>[INST] <<SYS>>\nUse the following context to answer the question at the end. Do not use any other information. If you can't find the relevant information in the context, just say you don't have enough information to answer the question. Don't try to make up an answer.\n\n<</SYS>>\n\n{context}\n\nQuestion: {input} [/INST]"
         
         # Print the prompt to see how it looks
         #print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
