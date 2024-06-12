@@ -101,7 +101,10 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
     )
 
     infobox_texts = [infobox['infobox'] for infobox in infoboxes]
-    all_test_questions = {test_d['question']: retriever.encode(test_d['question'], convert_to_tensor=True) for test_d in test_data}
+
+    all_questions = [test_d['question'] for test_d in test_data]
+    all_questions_encoded = retriever.encode(all_questions, convert_to_tensor=True)
+    all_test_questions = {all_questions[idx]: encoded_q for idx, encoded_q in enumerate(all_questions_encoded)}
     infobox_embeddings = retriever.encode(infobox_texts, convert_to_tensor=True)
 
     if is_temporal_enabled:
