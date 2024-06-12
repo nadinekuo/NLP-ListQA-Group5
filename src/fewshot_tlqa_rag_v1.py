@@ -1,4 +1,4 @@
-#4
+#5
 import os
 from knn import KnnSearch
 from utils import json_to_list
@@ -274,43 +274,33 @@ def parse_infoboxes_from_file(input_file):
     return parsed_infoboxes
 
 
+# Main function
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args = parse_args()
     k = args.k
-    model = args.model_name
+    model_name = args.model_name
 
-    # Define absolute path to the data directory
-    data_dir = os.path.abspath("../data")
-    test_file_path = os.path.join(data_dir, "test_TLQA.json")
-    train_file_path = os.path.join(data_dir, "train_TLQA.json")
-    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes.json")
+    # Enable mixed precision
+    model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
+    model.half()
+    tokenizer = T5Tokenizer.from_pretrained(model_name, torch_dtype=torch.float16)
 
-    # Print the current working directory and the contents of the data directory
-    print("Current working directory:", os.getcwd())
-    print("Absolute path of data directory:", data_dir)
-    print("Contents of the data directory:")
-    print(os.listdir(data_dir))
+    # Clear CUDA cache
+    torch.cuda.empty_cache()
 
-    if not os.path.exists(test_file_path):
-        raise FileNotFoundError(f"{test_file_path} not found.")
-    if not os.path.exists(train_file_path):
-        raise FileNotFoundError(f"{train_file_path} not found.")
-    if not os.path.exists(infoboxes_file_path):
-        raise FileNotFoundError(f"{infoboxes_file_path} not found.")
-
+    # Load data and embeddings as usual
     test_set = json_to_list(test_file_path)
     train_set = json_to_list(train_file_path)
-    train_questions = get_transfer_questions(train_set)  # Keep questions only to embed (to use in similarity metric)
+    train_questions = get_transfer_questions(train_set) 
     train_questions_emb = KNN_SEARCH.get_embeddings_for_data(train_questions)
 
-    # Load infoboxes
+    # Load and process infoboxes
     infoboxes = parse_infoboxes_from_file(infoboxes_file_path)
-
 
     # Initialize retriever model
     retriever = SentenceTransformer('sentence-transformers/msmarco-distilbert-base-v4')
 
-    print(f"\n\nStarting {k}-shot evaluation on {model} with context retrieval...\n\n")
-    fewshot_eval_with_context(K=k, model_name=model, test_data=test_set, train_data=train_set,
+    # Start few-shot evaluation with context retrieval
+    fewshot_eval_with_context(K=k, model_name=model_name, test_data=test_set, train_data=train_set,
                               train_emb=train_questions_emb, infoboxes=infoboxes, retriever=retriever, is_temporal_enabled=True)
