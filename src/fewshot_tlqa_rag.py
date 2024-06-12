@@ -150,8 +150,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         few_shot_prompt = prompt.format(input=f"{test_question}\nPlease answer this question in the same format as the {K} examples above.\n\n\
                                             Use the following context to answer the question at the end. Do not use any other information.\
                                             If you can't find the relevant information in the context, just say you don't have enough information to answer the question.\
-                                            Don't try to make up an answer.\n\n{top_infobox} 
-                                        ")
+                                            Don't try to make up an answer.\n\n{top_infobox}")
 
         # "<s>[INST] <<SYS>>\nUse the following context to answer the question at the end. Do not use any other information. If you can't find the relevant information in the context, just say you don't have enough information to answer the question. Don't try to make up an answer.\n\n<</SYS>>\n\n{context}\n\nQuestion: {input} [/INST]"
 
