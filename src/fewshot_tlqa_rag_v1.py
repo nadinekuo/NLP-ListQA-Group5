@@ -84,7 +84,7 @@ def mean_std_semantic(all_test_questions, all_infoboxes_text):
 # Few-shot Evaluation with Context Retrieval
 def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever, is_temporal_enabled=False):
     MAX_OUTPUT_LEN = 200
-    MAX_SEQUENCE_LENGTH = 250  # Model's max sequence length
+    MAX_SEQUENCE_LENGTH = 150  # Model's max sequence length
 
     model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
     tokenizer = T5Tokenizer.from_pretrained(model_name, torch_dtype=torch.float16)
@@ -137,7 +137,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
             top_k = heapq.nlargest(K, score_by_infobox_id.items(), key=lambda item: item[1])
             top_k_infobox_ids = [key for key, value in top_k]
         else:
-            hits = util.semantic_search(query_embedding, infobox_embeddings, top_k=1)[0]
+            hits = util.semantic_search(query_embedding, infobox_embeddings, top_k=K)[0]
             top_k_infobox_ids = [hit['corpus_id'] for hit in hits]
 
         print(top_k_infobox_ids)
