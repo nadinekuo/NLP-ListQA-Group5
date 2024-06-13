@@ -181,52 +181,6 @@ def convert_to_datetime(date_str):
     print(f"Date format for {date_str} not recognized, skipping this date.")
     return None
 
-def extract_infoboxes(dump_file, output_file):
-    dump = mwxml.Dump.from_file(bz2.open(dump_file))
-    infoboxes = []
-
-    for page in dump:
-        if page.namespace != 0:  # Only process articles in the main namespace
-            continue
-        if page.redirect:  # Skip redirects
-            continue
-        for revision in page:
-            if revision.text is None:
-                continue
-            wikicode = mwparserfromhell.parse(revision.text)
-            templates = wikicode.filter_templates()
-            for template in templates:
-                if template.name.lower().startswith("infobox"):
-                    infobox = {"title": page.title, "infobox": str(template)}
-                    infoboxes.append(infobox)
-            break  # Process only the latest revision
-
-    with open(output_file, 'w') as f:
-        json.dump(infoboxes, f, indent=2)
-
-def parse_infobox(infobox_wikitext):
-    wikicode = mwparserfromhell.parse(infobox_wikitext)
-    templates = wikicode.filter_templates()
-
-    infobox_data = {}
-    dates = []
-    date_pattern = re.compile(r'\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|\d{2}/\d{2}/\d{4}')
-
-    for template in templates:
-        template_name = str(template.name).strip()
-        fields = {}
-        for param in template.params:
-            param_name = str(param.name).strip()
-            param_value = str(param.value).strip()
-            fields[param_name] = param_value
-
-            # Find all dates in the parameter value
-            dates.extend(date_pattern.findall(param_value))
-
-        infobox_data[template_name] = fields
-
-    return infobox_data, dates
-
 def calculate_mean_date(dates):
     datetime_objects = [convert_to_datetime(date) for date in dates if convert_to_datetime(date) is not None]
     if not datetime_objects:
@@ -241,7 +195,7 @@ def extract_infoboxes_from_file(input_file):
 
     parsed_infoboxes = []
     all_dates = []
-    for infobox in infoboxes:
+    for i, infobox in enumerate(infoboxes):
         parsed_infobox, dates = parse_infobox(infobox['infobox'])
         mean_date = calculate_mean_date(dates) if dates else None
         parsed_infoboxes.append({
@@ -253,9 +207,12 @@ def extract_infoboxes_from_file(input_file):
         })
         if mean_date:
             all_dates.append(mean_date)
+        
+        # Print progress
+        if i % 100 == 0:
+            print(f"Processed {i+1} infoboxes")
 
     return parsed_infoboxes, all_dates
-
 
 def parse_infoboxes_from_file(input_file):
     parsed_infoboxes, all_dates = extract_infoboxes_from_file(input_file)
@@ -304,4 +261,4 @@ if __name__ == '__main__':
 
     print(f"\n\nStarting {k}-shot evaluation on {model} with context retrieval...\n\n")
     fewshot_eval_with_context(K=k, model_name=model, test_data=test_set, train_data=train_set,
-                              train_emb=train_questions_emb, infoboxes=infoboxes, retriever=retriever, is_temporal_enabled=True)
+                              train_emb=train_questions_emb, infoboxes=infoboxes, retriever=retriever, is_temporal_enabled=False)
