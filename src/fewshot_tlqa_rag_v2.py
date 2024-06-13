@@ -1,3 +1,4 @@
+#2
 import os
 from knn import KnnSearch
 from utils import json_to_list
@@ -13,7 +14,7 @@ import argparse
 # Argument Parsing
 def parse_args():
     parser = argparse.ArgumentParser(description='Few shot eval with context retrieval')
-    parser.add_argument('--k', default=3)
+    parser.add_argument('--k', default=3, type=int)
     parser.add_argument('--model-name', default='google/flan-t5-large')
     args = parser.parse_args()
     return args
@@ -70,11 +71,12 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
             input_variables=["input", "context"],
         )
       
-        few_shot_prompt = prompt.format(input=f"{test_question}\nPlease answer this question in the same format as the {K} examples above.\n\n\
-                                            Use the following context to answer the question at the end. Do not use any other information.\ 
-                                            If you can't find the relevant information in the context, just say you don't have enough information to answer the question.\ 
-                                            Don't try to make up an answer.\n\n{top_infobox}"
-                                        )
+        few_shot_prompt = prompt.format(
+            input=f"{test_question}\nPlease answer this question in the same format as the {K} examples above.\n\n"
+                  "Use the following context to answer the question at the end. Do not use any other information. "
+                  "If you can't find the relevant information in the context, just say you don't have enough information to answer the question. "
+                  "Don't try to make up an answer.\n\n{top_infobox}"
+        )
 
         # Print the prompt to see how it looks
         print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
