@@ -154,7 +154,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         Don't try to make up an answer.\n\n{concatenated_infoboxes}")
 
         # Print the prompt to see how it looks
-        # print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
+        print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
         results_GT_dict['prompts'].append(few_shot_prompt)
 
         input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids.to(device)
@@ -177,7 +177,9 @@ def convert_to_datetime(date_str):
             return datetime.strptime(date_str, fmt)
         except ValueError:
             continue
-    raise ValueError(f"Date format for {date_str} not recognized")
+    # Log the unrecognized date and return None
+    print(f"Date format for {date_str} not recognized, skipping this date.")
+    return None
 
 def extract_infoboxes(dump_file, output_file):
     dump = mwxml.Dump.from_file(bz2.open(dump_file))
@@ -226,7 +228,9 @@ def parse_infobox(infobox_wikitext):
     return infobox_data, dates
 
 def calculate_mean_date(dates):
-    datetime_objects = [convert_to_datetime(date) for date in dates]
+    datetime_objects = [convert_to_datetime(date) for date in dates if convert_to_datetime(date) is not None]
+    if not datetime_objects:
+        return None
     mean_timestamp = statistics.mean(dt.timestamp() for dt in datetime_objects)
     mean_datetime = datetime.fromtimestamp(mean_timestamp)
     return mean_datetime
@@ -251,6 +255,7 @@ def extract_infoboxes_from_file(input_file):
             all_dates.append(mean_date)
 
     return parsed_infoboxes, all_dates
+
 
 def parse_infoboxes_from_file(input_file):
     parsed_infoboxes, all_dates = extract_infoboxes_from_file(input_file)
