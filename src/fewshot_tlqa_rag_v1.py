@@ -176,7 +176,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
     results_ds = Dataset.from_dict(results_GT_dict)
     results_ds.save_to_disk(f"{K}_shot_{model_name}_with_context.hf")  # Ensure different name to prevent overwriting
 
-
+'''
 def convert_to_datetime(date_str):
     # Try to convert date_str to a datetime object with multiple formats
     for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y'):
@@ -185,7 +185,18 @@ def convert_to_datetime(date_str):
         except ValueError:
             continue
     raise ValueError(f"Date format for {date_str} not recognized")
-
+'''
+def convert_to_datetime(date_str):
+    # Try to convert date_str to a datetime object with multiple formats
+    formats = ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%d-%m-%y', '%Y/%m/%d', '%m/%d/%Y', '%Y.%m.%d']
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    # Log or skip the unrecognized date format
+    print(f"Warning: Date format for {date_str} not recognized, skipping.")
+    return None
 
 def extract_infoboxes(dump_file, output_file):
     dump = mwxml.Dump.from_file(bz2.open(dump_file))
