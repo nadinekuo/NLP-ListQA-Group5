@@ -9,6 +9,7 @@ from langchain_core.prompts.prompt import PromptTemplate
 from sentence_transformers import SentenceTransformer, util
 import json
 import argparse
+
 # Argument Parsing
 def parse_args():
     parser = argparse.ArgumentParser(description='Few shot eval with context retrieval')
@@ -16,14 +17,17 @@ def parse_args():
     parser.add_argument('--model-name', default='google/flan-t5-large')
     args = parser.parse_args()
     return args
+
 # Extracts all questions from the (train) set used for getting neighbours
 def get_transfer_questions(transfer_data):
     transfer_questions = []
     for index, data in enumerate(transfer_data):
         transfer_questions.append(data["question"])
     return transfer_questions
+
 def simplify_dict_list(dict_list):
     return [{'question': item['question'], 'answers': item['answers']} for item in dict_list]
+
 # Few-shot Evaluation with Context Retrieval
 def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever):  
     MAX_OUTPUT_LEN = 200
@@ -64,17 +68,13 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
             example_prompt=example_prompt,
             suffix="<s>[INST] <<SYS>>\nUse the following context to answer the question at the end. Do not use any other information. If you can't find the relevant information in the context, just say you don't have enough information to answer the question. Don't try to make up an answer.\n\n<</SYS>>\n\n{context}\n\nQuestion: {input} [/INST]",
             input_variables=["input", "context"],
-            suffix="Question: {input}",
-            input_variables=["input"],
         )
       
         few_shot_prompt = prompt.format(input=f"{test_question}\nPlease answer this question in the same format as the {K} examples above.\n\n\
                                             Use the following context to answer the question at the end. Do not use any other information.\ 
                                             If you can't find the relevant information in the context, just say you don't have enough information to answer the question.\ 
-                                            Don't try to make up an answer.\n\n{top_infobox} 
-                                        ")
-
-        # "<s>[INST] <<SYS>>\nUse the following context to answer the question at the end. Do not use any other information. If you can't find the relevant information in the context, just say you don't have enough information to answer the question. Don't try to make up an answer.\n\n<</SYS>>\n\n{context}\n\nQuestion: {input} [/INST]"
+                                            Don't try to make up an answer.\n\n{top_infobox}"
+                                        )
 
         # Print the prompt to see how it looks
         print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
@@ -91,6 +91,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         results_GT_dict['ground_truth_tokens'].append(gt_tokens)
     results_ds = Dataset.from_dict(results_GT_dict)
     results_ds.save_to_disk(f"{K}_shot_{model_name}_with_context.hf")  # Ensure different name to prevent overwriting
+
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args = parse_args()
