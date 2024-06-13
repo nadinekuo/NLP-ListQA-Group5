@@ -8,7 +8,7 @@ class KnnSearch:
 
     def get_embeddings_for_data(self, data_ls):
         # NOTE: any embedding model from sentence-transformers can be used
-        model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
+        model = SentenceTransformer('sentence-transformers/msmarco-distilbert-base-v4')
         embeddings = model.encode(data_ls)
         return embeddings
 
