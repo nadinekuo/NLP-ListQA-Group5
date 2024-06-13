@@ -1,4 +1,4 @@
-#9
+#10
 import os
 from knn import KnnSearch
 from utils import json_to_list
@@ -30,7 +30,7 @@ def simplify_dict_list(dict_list):
     return [{'question': item['question'], 'answers': item['answers']} for item in dict_list]
 
 # Few-shot Evaluation with Context Retrieval
-def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever):
+def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever):  
     MAX_OUTPUT_LEN = 200
     MAX_SEQUENCE_LENGTH = 512  # Model's max sequence length
     HALF_MAX_SEQUENCE_LENGTH = MAX_SEQUENCE_LENGTH // 2
@@ -78,6 +78,8 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
 
         # Debug statement to verify the combined infobox content
         print(f"Combined infobox for Test Question {i}:\n{combined_infobox}\n")
+        if not combined_infobox.strip():
+            print(f"Warning: Combined infobox for Test Question {i} is empty!")
 
         # Create the few-shot prompt template and feed to model
         prompt = FewShotPromptTemplate(
