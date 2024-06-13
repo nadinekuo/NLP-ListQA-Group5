@@ -1,4 +1,4 @@
-#3
+#4
 import os
 from knn import KnnSearch
 from utils import json_to_list
@@ -33,6 +33,7 @@ def simplify_dict_list(dict_list):
 def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever):  
     MAX_OUTPUT_LEN = 200
     MAX_SEQUENCE_LENGTH = 512  # Model's max sequence length
+    HALF_MAX_SEQUENCE_LENGTH = MAX_SEQUENCE_LENGTH // 2
     
     model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
     tokenizer = T5Tokenizer.from_pretrained(model_name, torch_dtype=torch.float16)
@@ -61,7 +62,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         top_infobox = infoboxes[hits[0]['corpus_id']]['infobox']
 
         # Truncate the context to fit within the sequence length limit
-        top_infobox = top_infobox[:MAX_SEQUENCE_LENGTH // 2]  # Adjust the truncation as needed
+        top_infobox = top_infobox[:HALF_MAX_SEQUENCE_LENGTH]  # Adjust the truncation as needed
 
         # Create the few-shot prompt template and feed to model
         prompt = FewShotPromptTemplate(
@@ -72,10 +73,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         )
       
         few_shot_prompt = prompt.format(
-            input=f"{test_question}\nPlease answer this question in the same format as the {K} examples above.\n\n"
-                  "Use the following context to answer the question at the end. Do not use any other information. "
-                  "If you can't find the relevant information in the context, just say you don't have enough information to answer the question. "
-                  "Don't try to make up an answer.",
+            input=f"{test_question}\nPlease answer this question in the same format as the {K} examples above.",
             context=top_infobox
         )
 
@@ -84,9 +82,9 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         
         results_GT_dict['prompts'].append(few_shot_prompt)
         
-        input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids.to(device)
+        input_ids = tokenizer(few_shot_prompt, return_tensors="pt", truncation=True, max_length=MAX_SEQUENCE_LENGTH).input_ids.to(device)
         output_tokens = model.generate(input_ids, max_length=MAX_OUTPUT_LEN)
-        output = tokenizer.decode(output_tokens[0])
+        output = tokenizer.decode(output_tokens[0], skip_special_tokens=True)
         results_GT_dict['output_tokens'].append(output_tokens[0])
         results_GT_dict['outputs'].append(output)
         results_GT_dict['ground_truths'].append(test_data[i]['final_answers'])
