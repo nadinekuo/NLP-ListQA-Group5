@@ -162,7 +162,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         Don't try to make up an answer.\n\n{concatenated_infoboxes}")
 
         # Print the prompt to see how it looks
-        # print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
+        print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
         results_GT_dict['prompts'].append(few_shot_prompt)
 
         input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids.to(device)
