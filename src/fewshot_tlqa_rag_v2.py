@@ -1,4 +1,4 @@
-#6
+#7
 import os
 from knn import KnnSearch
 from utils import json_to_list
@@ -69,6 +69,9 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
                 break
             combined_infobox += infobox + "\n"
             total_length += len(infobox)
+
+        # Debug statement to verify the combined infobox content
+        print(f"Combined infobox for Test Question {i}:\n{combined_infobox}\n")
 
         # Create the few-shot prompt template and feed to model
         prompt = FewShotPromptTemplate(
