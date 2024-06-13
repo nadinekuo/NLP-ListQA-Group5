@@ -20,7 +20,6 @@ import heapq
 
 KNN_SEARCH = KnnSearch()
 
-
 # Argument Parsing
 def parse_args():
     parser = argparse.ArgumentParser(description='Few shot eval with context retrieval')
@@ -29,7 +28,6 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-
 # Extracts all questions from the (train) set used for getting neighbours
 def get_transfer_questions(transfer_data):
     transfer_questions = []
@@ -37,10 +35,8 @@ def get_transfer_questions(transfer_data):
         transfer_questions.append(data["question"])
     return transfer_questions
 
-
 def simplify_dict_list(dict_list):
     return [{'question': item['question'], 'answers': item['answers']} for item in dict_list]
-
 
 def extract_years_and_convert_to_datetime(sentence):
     year_pattern = r'\b\d{4}\b'
@@ -53,13 +49,11 @@ def extract_years_and_convert_to_datetime(sentence):
 
     return datetime.fromtimestamp(np.mean(np.array(timestamps)))
 
-
 def temporal_score(question_date: datetime, infobox_date: datetime):
     alpha = 1e+7  # This parameter was manually tuned to have at least some impact on our model
     if question_date < infobox_date:
         return -1e+10
     return alpha / ((question_date.timestamp() - infobox_date.timestamp()) + 1e-10)
-
 
 def mean_std_temporal(all_test_question_dates, all_infoboxes_dates):
     temporal_scores = []
@@ -71,7 +65,6 @@ def mean_std_temporal(all_test_question_dates, all_infoboxes_dates):
     scores = np.array(temporal_scores)
     return np.mean(scores), np.std(scores)
 
-
 def mean_std_semantic(all_test_questions, all_infoboxes_text):
     semantic_scores = []
     for question_emb in all_test_questions:
@@ -82,9 +75,8 @@ def mean_std_semantic(all_test_questions, all_infoboxes_text):
     scores = np.array(semantic_scores)
     return np.mean(scores), np.std(scores)
 
-
 # Few-shot Evaluation with Context Retrieval
-def fewshot_eval_with_context(K=int(k), model_name, test_data, train_data, train_emb, infoboxes, retriever, is_temporal_enabled=False):
+def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever, is_temporal_enabled=False):
     MAX_OUTPUT_LEN = 200
     MAX_SEQUENCE_LENGTH = 512  # Model's max sequence length
 
@@ -162,7 +154,7 @@ def fewshot_eval_with_context(K=int(k), model_name, test_data, train_data, train
         Don't try to make up an answer.\n\n{concatenated_infoboxes}")
 
         # Print the prompt to see how it looks
-        print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
+        # print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
         results_GT_dict['prompts'].append(few_shot_prompt)
 
         input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids.to(device)
@@ -178,7 +170,6 @@ def fewshot_eval_with_context(K=int(k), model_name, test_data, train_data, train
     results_ds = Dataset.from_dict(results_GT_dict)
     results_ds.save_to_disk(f"{K}_shot_{model_name}_with_context.hf")  # Ensure different name to prevent overwriting
 
-
 def convert_to_datetime(date_str):
     # Try to convert date_str to a datetime object with multiple formats
     for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y'):
@@ -187,7 +178,6 @@ def convert_to_datetime(date_str):
         except ValueError:
             continue
     raise ValueError(f"Date format for {date_str} not recognized")
-
 
 def extract_infoboxes(dump_file, output_file):
     dump = mwxml.Dump.from_file(bz2.open(dump_file))
@@ -212,7 +202,6 @@ def extract_infoboxes(dump_file, output_file):
     with open(output_file, 'w') as f:
         json.dump(infoboxes, f, indent=2)
 
-
 def parse_infobox(infobox_wikitext):
     wikicode = mwparserfromhell.parse(infobox_wikitext)
     templates = wikicode.filter_templates()
@@ -236,13 +225,11 @@ def parse_infobox(infobox_wikitext):
 
     return infobox_data, dates
 
-
 def calculate_mean_date(dates):
     datetime_objects = [convert_to_datetime(date) for date in dates]
     mean_timestamp = statistics.mean(dt.timestamp() for dt in datetime_objects)
     mean_datetime = datetime.fromtimestamp(mean_timestamp)
     return mean_datetime
-
 
 def extract_infoboxes_from_file(input_file):
     with open(input_file, 'r') as f:
@@ -265,7 +252,6 @@ def extract_infoboxes_from_file(input_file):
 
     return parsed_infoboxes, all_dates
 
-
 def parse_infoboxes_from_file(input_file):
     parsed_infoboxes, all_dates = extract_infoboxes_from_file(input_file)
     mean_date = datetime.fromtimestamp(statistics.mean(dt.timestamp() for dt in all_dates))
@@ -274,7 +260,6 @@ def parse_infoboxes_from_file(input_file):
             infobox['mean_date'] = mean_date
 
     return parsed_infoboxes
-
 
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -309,10 +294,9 @@ if __name__ == '__main__':
     # Load infoboxes
     infoboxes = parse_infoboxes_from_file(infoboxes_file_path)
 
-
     # Initialize retriever model
     retriever = SentenceTransformer('sentence-transformers/msmarco-distilbert-base-v4')
 
     print(f"\n\nStarting {k}-shot evaluation on {model} with context retrieval...\n\n")
     fewshot_eval_with_context(K=k, model_name=model, test_data=test_set, train_data=train_set,
-                              train_emb=train_questions_emb, infoboxes=infoboxes, retriever=retriever, is_temporal_enabled=False)
+                              train_emb=train_questions_emb, infoboxes=infoboxes, retriever=retriever, is_temporal_enabled=True)
