@@ -1,4 +1,4 @@
-#4
+#5
 import os
 from knn import KnnSearch
 from utils import json_to_list
@@ -53,16 +53,22 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         # Retrieve k-nearest neighbors from training data
         neighs = knn.get_top_n_neighbours(sentence=test_question, data_emb=train_emb, transfer_data=train_data, k=K)
         simple_neighs = simplify_dict_list(neighs)
-        # Retrieve top-1 relevant context from infoboxes
+        # Retrieve top-K relevant contexts from infoboxes
         infobox_texts = [infobox['infobox'] for infobox in infoboxes]
         infobox_embeddings = retriever.encode(infobox_texts, convert_to_tensor=True)
         query_embedding = retriever.encode(test_question, convert_to_tensor=True)
 
         hits = util.semantic_search(query_embedding, infobox_embeddings, top_k=K)[0]
-        top_infobox = infoboxes[hits[0]['corpus_id']]['infobox']
+        top_infoboxes = [infoboxes[hit['corpus_id']]['infobox'] for hit in hits]
 
-        # Truncate the context to fit within the sequence length limit
-        top_infobox = top_infobox[:HALF_MAX_SEQUENCE_LENGTH]  # Adjust the truncation as needed
+        # Concatenate top-K infoboxes ensuring the total length does not exceed the limit
+        combined_infobox = ""
+        total_length = 0
+        for infobox in top_infoboxes:
+            if total_length + len(infobox) > HALF_MAX_SEQUENCE_LENGTH:
+                break
+            combined_infobox += infobox + "\n"
+            total_length += len(infobox)
 
         # Create the few-shot prompt template and feed to model
         prompt = FewShotPromptTemplate(
@@ -74,7 +80,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
       
         few_shot_prompt = prompt.format(
             input=f"{test_question}\nPlease answer this question in the same format as the {K} examples above.",
-            context=top_infobox
+            context=combined_infobox
         )
 
         # Print the prompt to see how it looks
