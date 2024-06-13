@@ -1,4 +1,4 @@
-#7
+#8
 import os
 from knn import KnnSearch
 from utils import json_to_list
@@ -102,7 +102,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
     results_ds = Dataset.from_dict(results_GT_dict)
     results_ds.save_to_disk(f"{K}_shot_{model_name}_with_context.hf")  # Ensure different name to prevent overwriting
 
-if __name__ == '__main__':
+if __name__ == '__mn__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args = parse_args()
     k = args.k
