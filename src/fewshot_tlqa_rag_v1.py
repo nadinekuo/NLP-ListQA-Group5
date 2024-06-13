@@ -1,4 +1,3 @@
-#7_1
 import os
 from knn import KnnSearch
 from utils import json_to_list
@@ -25,7 +24,7 @@ KNN_SEARCH = KnnSearch()
 # Argument Parsing
 def parse_args():
     parser = argparse.ArgumentParser(description='Few shot eval with context retrieval')
-    parser.add_argument('--k', type=int, default=3)
+    parser.add_argument('--k', default=3)
     parser.add_argument('--model-name', default='google/flan-t5-large')
     args = parser.parse_args()
     return args
@@ -56,7 +55,9 @@ def extract_years_and_convert_to_datetime(sentence):
 
 
 def temporal_score(question_date: datetime, infobox_date: datetime):
-    alpha = 365.0
+    alpha = 1e+7  # This parameter was manually tuned to have at least some impact on our model
+    if question_date < infobox_date:
+        return -1e+10
     return alpha / ((question_date.timestamp() - infobox_date.timestamp()) + 1e-10)
 
 
@@ -64,7 +65,8 @@ def mean_std_temporal(all_test_question_dates, all_infoboxes_dates):
     temporal_scores = []
     for question_date in all_test_question_dates:
         for infobox_date in all_infoboxes_dates:
-            temporal_scores.append(temporal_score(question_date, infobox_date))
+            if question_date >= infobox_date:
+                temporal_scores.append(temporal_score(question_date, infobox_date))
 
     scores = np.array(temporal_scores)
     return np.mean(scores), np.std(scores)
@@ -84,7 +86,7 @@ def mean_std_semantic(all_test_questions, all_infoboxes_text):
 # Few-shot Evaluation with Context Retrieval
 def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever, is_temporal_enabled=False):
     MAX_OUTPUT_LEN = 200
-    MAX_SEQUENCE_LENGTH = 400  # Model's max sequence length
+    MAX_SEQUENCE_LENGTH = 512  # Model's max sequence length
 
     model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
     tokenizer = T5Tokenizer.from_pretrained(model_name, torch_dtype=torch.float16)
@@ -119,7 +121,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
         neighs = KNN_SEARCH.get_top_n_neighbours(sentence=test_question, data_emb=train_emb, transfer_data=train_data,
                                                  k=K)
         simple_neighs = simplify_dict_list(neighs)
-        # Retrieve top-1 relevant context from infoboxes
+        # Retrieve top-K relevant contexts from infoboxes
         query_embedding = all_test_questions[test_question]
 
         if is_temporal_enabled:
@@ -130,10 +132,8 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
                 semantic_sc = hit['score']
                 temporal_sc = temporal_score(test_question_date, infoboxes[infobox_id]['mean_date'])
                 temporal_sc = ((temporal_sc - temporal_mean) / temporal_std) * semantic_std + semantic_mean
-                combined_score = float(temporal_sc) + float(semantic_sc)
-                score_by_infobox_id[infobox_id] = combined_score
+                score_by_infobox_id[infobox_id] = temporal_sc + semantic_sc
 
-            print(f"score_by_infobox_id: {score_by_infobox_id}")  # Debugging output
             top_k = heapq.nlargest(K, score_by_infobox_id.items(), key=lambda item: item[1])
             top_k_infobox_ids = [key for key, value in top_k]
         else:
@@ -141,11 +141,13 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
             top_k_infobox_ids = [hit['corpus_id'] for hit in hits]
 
         print(top_k_infobox_ids)
-        top_infobox_id = top_k_infobox_ids[0]
-        top_infobox = infoboxes[top_infobox_id]['infobox']
+        top_infoboxes = [infoboxes[infobox_id]['infobox'] for infobox_id in top_k_infobox_ids]
 
-        # Truncate the context to fit within the sequence length limit
-        top_infobox = top_infobox[:MAX_SEQUENCE_LENGTH // 2]  # Adjust the truncation as needed
+        # Truncate the contexts to fit within the sequence length limit
+        top_infoboxes = [infobox[:MAX_SEQUENCE_LENGTH // 2] for infobox in top_infoboxes]  # Adjust the truncation as needed
+
+        # Concatenate top K infoboxes
+        concatenated_infoboxes = " ".join(top_infoboxes)
 
         # Create the few-shot prompt template and feed to model
         prompt = FewShotPromptTemplate(
@@ -155,12 +157,12 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
             input_variables=["input"],
         )
         few_shot_prompt = prompt.format(input=f"{test_question}\nPlease answer this question in the same format as the {K} examples above.\n\n\
-                                            Use the following context to answer the question at the end. Do not use any other information.\
-                                            If you can't find the relevant information in the context, just say you don't have enough information to answer the question.\
-                                            Don't try to make up an answer.\n\n{top_infobox}")
+        Use the following context to answer the question at the end (do not use this structure however). \
+        If you can't find the relevant information in the context, just say you don't have enough information to answer the question. \
+        Don't try to make up an answer.\n\n{concatenated_infoboxes}")
 
         # Print the prompt to see how it looks
-        print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
+        # print(f"Few-shot Prompt for Test Question {i}:\n{few_shot_prompt}\n")
         results_GT_dict['prompts'].append(few_shot_prompt)
 
         input_ids = tokenizer(few_shot_prompt, return_tensors="pt").input_ids.to(device)
@@ -176,7 +178,7 @@ def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, i
     results_ds = Dataset.from_dict(results_GT_dict)
     results_ds.save_to_disk(f"{K}_shot_{model_name}_with_context.hf")  # Ensure different name to prevent overwriting
 
-'''
+
 def convert_to_datetime(date_str):
     # Try to convert date_str to a datetime object with multiple formats
     for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y'):
@@ -185,18 +187,7 @@ def convert_to_datetime(date_str):
         except ValueError:
             continue
     raise ValueError(f"Date format for {date_str} not recognized")
-'''
-def convert_to_datetime(date_str):
-    # Try to convert date_str to a datetime object with multiple formats
-    formats = ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%d-%m-%y', '%Y/%m/%d', '%m/%d/%Y', '%Y.%m.%d']
-    for fmt in formats:
-        try:
-            return datetime.strptime(date_str, fmt)
-        except ValueError:
-            continue
-    # Log or skip the unrecognized date format
-    print(f"Warning: Date format for {date_str} not recognized, skipping.")
-    return None
+
 
 def extract_infoboxes(dump_file, output_file):
     dump = mwxml.Dump.from_file(bz2.open(dump_file))
@@ -295,7 +286,7 @@ if __name__ == '__main__':
     data_dir = os.path.abspath("../data")
     test_file_path = os.path.join(data_dir, "test_TLQA.json")
     train_file_path = os.path.join(data_dir, "train_TLQA.json")
-    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes_7500.json")
+    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes.json")
 
     # Print the current working directory and the contents of the data directory
     print("Current working directory:", os.getcwd())
