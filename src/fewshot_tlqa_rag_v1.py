@@ -284,7 +284,7 @@ if __name__ == '__main__':
     data_dir = os.path.abspath("../data")
     test_file_path = os.path.join(data_dir, "test_TLQA.json")
     train_file_path = os.path.join(data_dir, "train_TLQA.json")
-    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes_7500.json")
+    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes.json")
 
     # Print the current working directory and the contents of the data directory
     print("Current working directory:", os.getcwd())
