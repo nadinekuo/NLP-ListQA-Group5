@@ -24,7 +24,7 @@ KNN_SEARCH = KnnSearch()
 # Argument Parsing
 def parse_args():
     parser = argparse.ArgumentParser(description='Few shot eval with context retrieval')
-    parser.add_argument('--k', default=3)
+    parser.add_argument('--k', type=int, default=3)  # Ensure k is an integer
     parser.add_argument('--model-name', default='google/flan-t5-large')
     args = parser.parse_args()
     return args
@@ -84,7 +84,7 @@ def mean_std_semantic(all_test_questions, all_infoboxes_text):
 
 
 # Few-shot Evaluation with Context Retrieval
-def fewshot_eval_with_context(K, model_name, test_data, train_data, train_emb, infoboxes, retriever, is_temporal_enabled=False):
+def fewshot_eval_with_context(K=int(k), model_name, test_data, train_data, train_emb, infoboxes, retriever, is_temporal_enabled=False):
     MAX_OUTPUT_LEN = 200
     MAX_SEQUENCE_LENGTH = 512  # Model's max sequence length
 
@@ -286,7 +286,7 @@ if __name__ == '__main__':
     data_dir = os.path.abspath("../data")
     test_file_path = os.path.join(data_dir, "test_TLQA.json")
     train_file_path = os.path.join(data_dir, "train_TLQA.json")
-    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes.json")
+    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes_7500.json")
 
     # Print the current working directory and the contents of the data directory
     print("Current working directory:", os.getcwd())
