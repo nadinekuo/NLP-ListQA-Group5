@@ -189,6 +189,29 @@ def calculate_mean_date(dates):
     mean_datetime = datetime.fromtimestamp(mean_timestamp)
     return mean_datetime
 
+def parse_infobox(infobox_wikitext):
+    wikicode = mwparserfromhell.parse(infobox_wikitext)
+    templates = wikicode.filter_templates()
+
+    infobox_data = {}
+    dates = []
+    date_pattern = re.compile(r'\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|\d{2}/\d{2}/\d{4}')
+
+    for template in templates:
+        template_name = str(template.name).strip()
+        fields = {}
+        for param in template.params:
+            param_name = str(param.name).strip()
+            param_value = str(param.value).strip()
+            fields[param_name] = param_value
+
+            # Find all dates in the parameter value
+            dates.extend(date_pattern.findall(param_value))
+
+        infobox_data[template_name] = fields
+
+    return infobox_data, dates
+
 def extract_infoboxes_from_file(input_file):
     with open(input_file, 'r') as f:
         infoboxes = json.load(f)
