@@ -24,7 +24,7 @@ KNN_SEARCH = KnnSearch()
 def parse_args():
     parser = argparse.ArgumentParser(description='Few shot eval with context retrieval')
     parser.add_argument('--k', type=int, default=3)  # Ensure k is an integer
-    parser.add_argument('--model-name', default='google/flan-t5-large')
+    parser.add_argument('--model-name', default='google/flan-t5-base')
     args = parser.parse_args()
     return args
 
@@ -116,7 +116,7 @@ def fewshot_eval_with_context(model_name, test_data, train_data, train_emb, info
         all_infoboxes_dates = [infobox['mean_date'] for infobox in infoboxes]
         temporal_mean, temporal_std = mean_std_temporal(all_test_question_dates, all_infoboxes_dates)
 
-    for K in [3, 5, 7, 10]:
+    for K in [7, 10]:
         print(f"\n\nStarting {k}-shot evaluation on {model} with context retrieval...\n\n")
         # Convert test set to list and loop over all items
         for i, item in enumerate(test_data):
@@ -189,7 +189,7 @@ def fewshot_eval_with_context(model_name, test_data, train_data, train_emb, info
 
 def convert_to_datetime(date_str):
     # Try to convert date_str to a datetime object with multiple formats
-    for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y'):
+    for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', "%d %B %Y"):
         try:
             return datetime.strptime(date_str, fmt)
         except ValueError:
@@ -210,24 +210,14 @@ def parse_infobox(infobox_wikitext):
     wikicode = mwparserfromhell.parse(infobox_wikitext)
     templates = wikicode.filter_templates()
 
-    infobox_data = {}
+    # infobox_data = {}
     dates = []
-    date_pattern = re.compile(r'\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|\d{2}/\d{2}/\d{4}')
+    date_pattern = re.compile(r'\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|\d{2}/\d{2}/\d{4}|\b(\d{1,2} [A-Za-z]+ \d{4})\b')
 
-    for template in templates:
-        template_name = str(template.name).strip()
-        fields = {}
-        for param in template.params:
-            param_name = str(param.name).strip()
-            param_value = str(param.value).strip()
-            fields[param_name] = param_value
+    for value in infobox_wikitext.values():
+        dates.extend(date_pattern.findall(value))
 
-            # Find all dates in the parameter value
-            dates.extend(date_pattern.findall(param_value))
-
-        infobox_data[template_name] = fields
-
-    return infobox_data, dates
+    return dates
 
 def extract_infoboxes_from_file(input_file):
     with open(input_file, 'r') as f:
@@ -235,13 +225,14 @@ def extract_infoboxes_from_file(input_file):
 
     parsed_infoboxes = []
     all_dates = []
-    for i, infobox in enumerate(infoboxes):
-        parsed_infobox, dates = parse_infobox(infobox['infobox'])
+    keys = infoboxes.keys()
+    for i, key in enumerate(keys):
+        dates = parse_infobox(infoboxes[key])
         mean_date = calculate_mean_date(dates) if dates else None
         parsed_infoboxes.append({
-            'title': infobox['title'],
-            'parsed_info_box': parsed_infobox,
-            'infobox': infobox['infobox'],
+            # 'title': infobox['title'],
+            # 'parsed_info_box': parsed_infobox,
+            'infobox': infoboxes[key],
             'is_global_mean': False if mean_date else True,
             'mean_date': mean_date if mean_date else None  # string format
         })
@@ -274,7 +265,7 @@ if __name__ == '__main__':
     data_dir = os.path.abspath("../data")
     test_file_path = os.path.join(data_dir, "test_TLQA.json")
     train_file_path = os.path.join(data_dir, "train_TLQA.json")
-    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes_7500.json")
+    infoboxes_file_path = os.path.join(data_dir, "correct_infoboxes.json")
 
     # Print the current working directory and the contents of the data directory
     print("Current working directory:", os.getcwd())
