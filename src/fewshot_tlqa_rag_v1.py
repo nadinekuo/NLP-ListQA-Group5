@@ -185,7 +185,7 @@ def fewshot_eval_with_context(model_name, test_data, train_data, train_emb, info
             results_GT_dict['ground_truth_tokens'].append(gt_tokens)
 
         results_ds = Dataset.from_dict(results_GT_dict)
-        results_ds.save_to_disk(f"{K}_shot_{model_name}_with_context.hf")  # Ensure different name to prevent overwriting
+        results_ds.save_to_disk(f"{K}_shot_{model_name}_with_context_updated.hf")  # Ensure different name to prevent overwriting
 
 def convert_to_datetime(date_str):
     # Try to convert date_str to a datetime object with multiple formats
@@ -213,11 +213,12 @@ def parse_infobox(infobox_wikitext):
     # infobox_data = {}
     dates = []
     date_pattern = re.compile(r'\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|\d{2}/\d{2}/\d{4}|\b(\d{1,2} [A-Za-z]+ \d{4})\b')
-
+    parsed_values = ""
     for value in infobox_wikitext.values():
+        parsed_values = parsed_values + value + " "
         dates.extend(date_pattern.findall(value))
 
-    return dates
+    return parsed_values, dates
 
 def extract_infoboxes_from_file(input_file):
     with open(input_file, 'r') as f:
@@ -227,12 +228,12 @@ def extract_infoboxes_from_file(input_file):
     all_dates = []
     keys = infoboxes.keys()
     for i, key in enumerate(keys):
-        dates = parse_infobox(infoboxes[key])
+        parsed, dates = parse_infobox(infoboxes[key])
         mean_date = calculate_mean_date(dates) if dates else None
         parsed_infoboxes.append({
             # 'title': infobox['title'],
             # 'parsed_info_box': parsed_infobox,
-            'infobox': infoboxes[key],
+            'infobox': parsed,
             'is_global_mean': False if mean_date else True,
             'mean_date': mean_date if mean_date else None  # string format
         })
@@ -265,7 +266,7 @@ if __name__ == '__main__':
     data_dir = os.path.abspath("../data")
     test_file_path = os.path.join(data_dir, "test_TLQA.json")
     train_file_path = os.path.join(data_dir, "train_TLQA.json")
-    infoboxes_file_path = os.path.join(data_dir, "correct_infoboxes.json")
+    infoboxes_file_path = os.path.join(data_dir, "extracted_infoboxes_test.json")
 
     # Print the current working directory and the contents of the data directory
     print("Current working directory:", os.getcwd())
